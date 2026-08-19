@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
+        <MinMSBuildReq>19.0</MinMSBuildReq>
+        <MinNetSdkReq>10.0</MinNetSdkReq>
+        <TargetFrameworks>net10.0;net10.0-windows10.0.19041.0</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Appium.WebDriver" />
+        <PackageReference Include="CoordinateUtilityServices" />
+        <PackageReference Include="FluentValidation" />
+        <PackageReference Include="Microsoft.Extensions.Logging" />
+        <PackageReference Include="TransversalUtilityServices" />
+        <PackageReference Include="FileStreamUtilityServices" />
+        <PackageReference Include="AzureUtilityServices" />
+        <PackageReference Include="AssemblyUtilityServices" />
+        <PackageReference Include="ExceptionHandlingUtilityServices" />
+        <PackageReference Include="ExceptionFactories" />
+        <PackageReference Include="LoggerFactoryUtilityServices" />
+        <PackageReference Include="ListItemUitilityServices" />
+        <PackageReference Include="MathUtilityServices" />
+        <PackageReference Include="StringUtilityServices" />
+        <PackageReference Include="SerilogHelperServices" />
+        <PackageReference Include="Selenium.WebDriver" />
+        <PackageReference Include="Serilog.Sinks.Console" />
+        <PackageReference Include="Serilog.Extensions.Hosting" />
+        <PackageReference Include="Serilog.Extensions.Logging" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="AiUtility.AiBaseUtilityServices"/>
+        <PackageReference Include="AiUtility.ToolKits"/>
+        <PackageReference Include="AiUtility.GeminiKits"/>
+        <PackageReference Include="AiUtility.GeminiUtilityServices"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NetRuntimeUtilityServices"/>
+    </ItemGroup>
+</Project>
