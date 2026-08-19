@@ -1,0 +1,11 @@
+{
+    "DeviceName": "Android",
+    "PackageName": "com.netease.onmyoji",
+    "GameName": "胸懷三國-美人計",
+    "Uri":"http://127.0.0.1:4723/wd/hub",
+    "Steps": [
+        { "Action": "Wait", "Timeout": 10 },
+        { "Action": "Click", "Target": "DailyRewardBtn" },
+        { "Action": "Input", "Target": "ChatBox", "Value": "Hello World!" }
+    ]
+}
