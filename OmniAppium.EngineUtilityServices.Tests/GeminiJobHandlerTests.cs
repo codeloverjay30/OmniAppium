@@ -5,6 +5,7 @@ using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
 using AiUtility.ToolKits.Abstractions;
 using CommonModels;
+using FluentAssertions;
 using Moq;
 using OmniAppium.ConfigUtilityService.Models;
 using OmniAppium.EngineUtilityService.Utilities;
@@ -433,30 +434,77 @@ public class GeminiJobHandlerTests
     public async Task AutoExecuteAsync_ConcurrencyTest_ShouldEnsureDataConsistency()
     {
         Setup();
-        // 使用 Semaphore 阻塞 Mock 的回傳，模擬真實的異步等待時間
-        var semaphore = new SemaphoreSlim(0 , 1);
+
+        // Arrange
+        const int concurrentExecutionCount = 2;
+
+        using var semaphore = new SemaphoreSlim(
+            initialCount: 0,
+            maxCount: concurrentExecutionCount);
+
+        var capturedRequests =
+            new System.Collections.Concurrent.ConcurrentBag<(string? Prompt, string UserTask)>();
 
         _mockSessionManager
-            .Setup(s => s.ExecuteWithToolSupportAsync<TestProgress>(It.IsAny<GeminiGenerateRequest>() , It.IsAny<string>() , It.IsAny<AiExecutionSettings>() , It.IsAny<CancellationToken>() , It.IsAny<IProgress<TestProgress>>()))
-            .Returns(async () => {
-                await semaphore.WaitAsync(); // 讓它停在這裡
-                return new StatusJsonModels();
-            });
+            .Setup(s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()))
+            .Returns(
+                async (
+                    GeminiGenerateRequest request,
+                    string userTask,
+                    AiExecutionSettings _,
+                    CancellationToken cancellationToken,
+                    IProgress<TestProgress> _) =>
+                {
+                    capturedRequests.Add((request.Prompt, userTask));
 
-        var job1 = new GeminiJob { Prompt = "CRITICAL_A" , UserTask = "TASK_A" };
-        var job2 = new GeminiJob { Prompt = "CRITICAL_B" , UserTask = "TASK_B" };
+                    await semaphore.WaitAsync(cancellationToken);
+
+                    return new StatusJsonModels();
+                });
+
+        var job1 = new GeminiJob
+        {
+            Prompt = "CRITICAL_A",
+            UserTask = "TASK_A"
+        };
+
+        var job2 = new GeminiJob
+        {
+            Prompt = "CRITICAL_B",
+            UserTask = "TASK_B"
+        };
 
         // Act
         var task1 = _handler.AutoExecuteAsync(job1);
         var task2 = _handler.AutoExecuteAsync(job2);
 
-        semaphore.Release(2); // 釋放兩個 Task 繼續執行
-        await Task.WhenAll(task1 , task2);
+        semaphore.Release(concurrentExecutionCount);
 
-        // Assert: 
-        // 如果你的 Handler 是 Thread-Safe 的，這兩次 Verify 都應該通過。
-        // 如果失敗，代表其中一個 Task 拿到了對方的 Prompt。
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.Is<GeminiGenerateRequest>(r => r.Prompt == "CRITICAL_A") , "TASK_A" , It.IsAny<AiExecutionSettings>() , It.IsAny<CancellationToken>() , It.IsAny<IProgress<TestProgress>>()) , Times.Once);
+        Func<Task> act = async () =>
+            await Task.WhenAll(task1, task2);
+
+        // Assert
+        await act.Should().NotThrowAsync();
+
+        capturedRequests.Should().BeEquivalentTo(
+        [
+            ("CRITICAL_A" , "TASK_A") ,
+        ("CRITICAL_B" , "TASK_B")
+        ]);
+
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()),
+            Times.Exactly(concurrentExecutionCount));
     }
+
 }
