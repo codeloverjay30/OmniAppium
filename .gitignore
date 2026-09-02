@@ -641,6 +641,19 @@ $RECYCLE.BIN/
 !*.json
 !*.json5
 
+# examples
+!*.ex.*
+
+#### ================================================ ####
+#### === Secure file will be ignored === ####
+#### === END OF comment === ####
+secure.config.json5
+
+#### ================================================ ####
+#### === repomix configuration file will be ignored === ####
+#### === END OF comment === ####
+repomix.config.json
+
 ### ================================================ ###
 ### === PowerShell, Cmd, will NOT be ignored since  === ###
 ### === it is used for finding configuration about phones and games (app) === ###
@@ -650,4 +663,3 @@ $RECYCLE.BIN/
 !*.psm1
 !*.cmd
 !*.bat
-
