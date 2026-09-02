@@ -1,0 +1,27 @@
+{
+    "Jobs":[
+        {
+            // 最多給予1000毫秒來點擊目標(以XPath Expression為"//div[id='monster']"搜尋目標)
+            "Type": "Click",
+            "Target": {
+                "Type": "XPath",
+                "Value": "//div[id='monster']"
+            }
+            "Timeout": 1000 
+        },
+        {
+            // 等待2000毫秒(2秒)
+            "Type": "Wait",
+            "Timeout": 2000 
+        },
+        {
+            // 點擊螢幕座標(500,1000)
+            "Type": "Click",
+            "Position": {
+                "X": 500,
+                "Y": 1000
+            },
+            "Timeout": 1000 
+        }
+    ]
+}

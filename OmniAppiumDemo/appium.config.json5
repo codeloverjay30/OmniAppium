@@ -1,0 +1,17 @@
+{
+    "PlatformName": "Android",
+    "AppiumServerUri": "http://127.0.0.1:4723/",
+    "DeviceUdid": "X8PNKF7XXGHEGA69",
+    "DeviceName": "X8PNKF7XXGHEGA69",
+    "NoReset": true,
+    "IgnoreHiddenApiPolicyError": true,
+    "EnsureWebviewsHavePages": true,
+    "NoAnalyzer": true,
+    "SkipDeviceInitialization": false,
+    "DontStopAppOnReset": true,
+    "ForceAppLaunch": true,
+    "ShouldTerminateApp": false,
+    "IgnoreUnimportantViews": true,
+    "ScreenshotQuality": 60,
+    "WaitForIdleTimeout": 0
+}

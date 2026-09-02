@@ -1,0 +1,16 @@
+﻿{
+    "Jobs": [
+        {
+            "Type": "Wait",
+            "Timeout": 2000
+        },
+        {
+            "Type": "Click",
+            "Position": {
+                "X": 1957,
+                "Y": 172
+            },
+            "Timeout": 5000
+        }
+    ]
+}

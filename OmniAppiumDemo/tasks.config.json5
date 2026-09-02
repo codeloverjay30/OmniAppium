@@ -1,0 +1,16 @@
+{
+    "Version": "1.1",
+    "Tasks": [
+        {
+            "TaskName": "每日簽到任務",
+            "Instruction": "開啟遊戲 App，導航至『活動中心』，尋找『每日簽到』按鈕並點擊，若跳出廣告請關閉它。",
+            "ResetContext": true
+        },
+        /* 這裡可以暫時註解掉不需要的任務 */
+        {
+            "TaskName": "資源領取",
+            "Instruction": "進入郵箱，點擊『全部領取』，並確認領取成功後的彈窗已關閉。",
+            "ResetContext": false
+        }
+    ]
+}

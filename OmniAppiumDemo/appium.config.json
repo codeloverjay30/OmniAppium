@@ -1,0 +1,15 @@
+{
+    "server": {
+        "log": "appium.log",
+        "use-plugins": [
+            "images"
+        ],
+        "address": "127.0.0.1",
+        "port": 4723,
+        "allow-insecure": [
+            "*:get_system_logs",
+            "*:adb_shell"
+        ],
+        "allow-cors": true
+    }
+}
