@@ -49,6 +49,9 @@ Gemini.md
 ## cline
 .clinerules
 
+## repomix
+.repomixignore
+
 ## template of rule sets for ai agent
 ai-rules.md
 
@@ -626,3 +629,25 @@ $RECYCLE.BIN/
 
 ### ... and others (solution legacy file format support if needed)
 !**/*.sln
+
+### ================================================ ###
+### === Project configuration settings will NOT be ignored since === ###
+### it is used for running the OmniAppium (which runs and scrawls the specific application) === ###
+### Also, I wrote an example for future reference === ###
+### === END OF comment === ###
+
+# configuration
+!*.config
+!*.json
+!*.json5
+
+### ================================================ ###
+### === PowerShell, Cmd, will NOT be ignored since  === ###
+### === it is used for finding configuration about phones and games (app) === ###
+### === Also, at present, one prepare/runs OmniAppium with these files === ###
+### === END OF comment === ###
+!*.ps1
+!*.psm1
+!*.cmd
+!*.bat
+
