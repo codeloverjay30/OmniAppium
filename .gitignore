@@ -42,6 +42,20 @@ local-packages
 .vscode-debug-eval.cs
 .vscode-debug-eval.*.cs
 
+# configuration or rule used on AI
+## Gemini Code Assisant VSC plugin
+Gemini.md
+
+## cline
+.clinerules
+
+## template of rule sets for ai agent
+ai-rules.md
+
+### ... and others AI Agent (Cursor rules, Copilot instructions)
+.cursorrules
+github-copilot-instructions.md
+
 # scripts
 *.ps1
 *.psm1
