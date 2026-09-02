@@ -1,0 +1,1 @@
+dotnet run --project ./OmniAppiumDemo/OmniAppiumDemo.csproj @args
