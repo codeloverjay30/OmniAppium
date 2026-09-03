@@ -1,8 +1,8 @@
 {
     "PlatformName": "Android",
     "AppiumServerUri": "http://127.0.0.1:4723/",
-    "DeviceUdid": "X8PNKF7XXGHEGA69",
-    "DeviceName": "X8PNKF7XXGHEGA69",
+    "DeviceUdid": "R5GL616GPNJ",
+    "DeviceName": "R5GL616GPNJ",
     "NoReset": true,
     "IgnoreHiddenApiPolicyError": true,
     "EnsureWebviewsHavePages": true,
