@@ -128,7 +128,7 @@ var developmentDeviceScreenSize = developmentDeviceConfig.ScreenSize;
 
 #if AUTO_EXECUTE_TASKS
 
-var aiConfigPath = @"D:\workspace\utility_packages\Scrawler\Phone\AndroidApp\GamesScrawler\OmniAppium.Engine\OmniAppiumDemo\secure.config.json5";
+var aiConfigPath = @"D:\workspace\utility_packages\experiments\Scrawler\Phone\AndroidApp\GamesScrawler\OmniAppium.Engine\OmniAppiumDemo\secure.config.json5";
 
 var targettDeviceScreenSize = screenService.GetFreshScreenSize();
 IResolutionScaler resolutionScaler = new ResolutionScaler(
@@ -267,11 +267,13 @@ IGeminiSessionManager geminiSessionManager = new GeminiSessionManager(
     semaphoreSlimService
 );
 
+#if EXECUTES_TASK
 statusJsonModels = await geminiSessionManager.ExecuteWithToolSupportAsync<WorkflowProgress>(
     request: request,
     userTask:"自動登入",
     settings:aiExecutionSettings
 );
+#endif
 
 #if IS_LOGGING
 loggerFactoryService.Logger.LogInformation($"statusJsonModels.IsAllSuccess:{statusJsonModels.IsAllSuccess}");
@@ -290,7 +292,8 @@ loggerFactoryService.Logger.LogInformation("Wait 10s to load the app");
 
 waitService.Wait(10000);
 
-clickService.TapAt(1957 , 172);
+// clickService.TapAt(1957 , 172);
+clickService.TapAt(1167 , 740);
 
 screenshotService.TakeAndSaveScreenshot(screenshot1_Path);
 #endif
