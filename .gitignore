@@ -668,5 +668,5 @@ repomix.config.json
 #### === 需求書 will NOT be ignored since  === ####
 #### === it is used for knowing what is needed === ####
 #### === END OF comment === ####
-Attachment[Ss]/
-Attachment/
+!Attachment[Ss]/
+!Attachment/
