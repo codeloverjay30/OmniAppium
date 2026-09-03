@@ -6,14 +6,26 @@
         },
         {
             "Type": "Click",
+
+            // true:
+            // Position is based on the development/reference resolution.
+            // It will be transformed to the current device resolution.
+            "ScalePosition": false,
+
             "Position": {
-                "X": 1957,
-                "Y": 172
+                "X": 1167,
+                "Y": 740
             },
             "Timeout": 5000
         },
         {
             "Type": "Click",
+
+            // true:
+            // Position is based on the development/reference resolution.
+            // It will be transformed to the current device resolution.
+            "ScalePosition": false,
+
             "Position": {
                 "X": 500,
                 "Y": 1000
