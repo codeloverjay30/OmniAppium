@@ -654,12 +654,19 @@ secure.config.json5
 #### === END OF comment === ####
 repomix.config.json
 
-### ================================================ ###
-### === PowerShell, Cmd, will NOT be ignored since  === ###
-### === it is used for finding configuration about phones and games (app) === ###
-### === Also, at present, one prepare/runs OmniAppium with these files === ###
-### === END OF comment === ###
+#### ================================================ ####
+#### === PowerShell, Cmd, will NOT be ignored since  === ####
+#### === it is used for finding configuration about phones and games (app) === ####
+#### === Also, at present, one prepare/runs OmniAppium with these files === ####
+#### === END OF comment === ####
 !*.ps1
 !*.psm1
 !*.cmd
 !*.bat
+
+#### ================================================ ####
+#### === 需求書 will NOT be ignored since  === ####
+#### === it is used for knowing what is needed === ####
+#### === END OF comment === ####
+Attachment[Ss]/
+Attachment/
