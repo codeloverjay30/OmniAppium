@@ -11,14 +11,13 @@ public sealed class ClickJob : Job
     public Point? Position { get; set; }
 
     /// <summary>
-    /// Gets or sets the target element to click.
+    /// Gets or sets the UI target to click.
     /// </summary>
     public Target? Target { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether the configured position
-    /// should be transformed from the reference resolution to the
-    /// current device resolution.
+    /// Gets or sets how the configured position should be interpreted.
     /// </summary>
-    public bool ScalePosition { get; set; } = false;
+    public CoordinateMode CoordinateMode { get; set; }
+        = CoordinateMode.Absolute;
 }
