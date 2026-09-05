@@ -51,12 +51,38 @@ namespace OmniAppium.EngineUtilityService.Utilities
         private Bitmap? _croppedBitmap;
         public Bitmap? CroppedImage => _croppedBitmap;
         public bool HasBeenCropped { get; private set; } = false;
+        /// <summary>
+        /// Captures a fresh screenshot from the current Appium driver session.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the driver fails to return a screenshot.
+        /// </exception>
         public void TakeScreenshot()
         {
             ClearBitmaps();
-            _rawScreenshot = Driver.GetScreenshot();
-            HasBeenCropped = false;
+
+            var screenshot =
+                Driver.GetScreenshot();
+
+            if (screenshot is null)
+            {
+                throw new InvalidOperationException(
+                    "The Appium driver returned a null screenshot.");
+            }
+
+            if (screenshot.AsByteArray is not { Length: > 0 })
+            {
+                throw new InvalidOperationException(
+                    "The Appium driver returned an empty screenshot.");
+            }
+
+            _rawScreenshot =
+                screenshot;
+
+            HasBeenCropped =
+                false;
         }
+
 
         [SupportedOSPlatform("windows")]
         [RequiresRuntime(6,1, "WINDOWS")]
@@ -72,26 +98,47 @@ namespace OmniAppium.EngineUtilityService.Utilities
             ArgumentNullException.ThrowIfNull(_rawScreenshot);
             ExecuteWithLogging(filename , () => _rawScreenshot.SaveAsFile(filename));
         }
-        [SupportedOSPlatform("windows")]
-        [RequiresRuntime(6 , 1 , "WINDOWS")]
-        public void CropScreenshot(System.Drawing.Rectangle area)
-        {
-            ArgumentNullException.ThrowIfNull(_rawScreenshot , nameof(_rawScreenshot));
 
-            // 如果尚未建立 fullBitmap，則建立它（Lazy Loading）
-            if(_fullBitmap == null)
+        /// <summary>
+        /// Crops the currently captured screenshot to the specified area.
+        /// </summary>
+        /// <param name="area">
+        /// The rectangular area to crop.
+        /// </param>
+        [SupportedOSPlatform("windows")]
+        [RequiresRuntime(6, 1, "WINDOWS")]
+        public void CropScreenshot(
+            System.Drawing.Rectangle area)
+        {
+            ArgumentNullException.ThrowIfNull(
+                _rawScreenshot,
+                nameof(_rawScreenshot));
+
+            if (_fullBitmap is null)
             {
-                using var ms = new MemoryStream(_rawScreenshot.AsByteArray);
-                _fullBitmap = new Bitmap(ms);
+                using var stream =
+                    new MemoryStream(
+                        _rawScreenshot.AsByteArray,
+                        writable: false);
+
+                using var sourceBitmap =
+                    new Bitmap(stream);
+
+                _fullBitmap =
+                    new Bitmap(sourceBitmap);
             }
 
-            // 清理上一次的裁切結果
             _croppedBitmap?.Dispose();
 
-            // 執行裁切
-            _croppedBitmap = _fullBitmap.Clone(area , _fullBitmap.PixelFormat);
-            HasBeenCropped = true;
+            _croppedBitmap =
+                _fullBitmap.Clone(
+                    area,
+                    _fullBitmap.PixelFormat);
+
+            HasBeenCropped =
+                true;
         }
+
         public void CropScreenshot(OmniRectangle area)
         {
             Rectangle rectangle = area.ToSystemDrawing();
@@ -118,25 +165,70 @@ namespace OmniAppium.EngineUtilityService.Utilities
             SaveImage(filename);
         }
 
-        public byte [ ] GetBytesOfCachedScreenshotBytes(
-            ImageFormat? imageFormat = null
-        )
+        /// <summary>
+        /// Gets the cached screenshot as an image byte array.
+        /// A new screenshot is captured when no cached raw screenshot exists.
+        /// </summary>
+        /// <param name="imageFormat">
+        /// The image format to return. PNG is used when no format is specified.
+        /// </param>
+        /// <returns>
+        /// The screenshot encoded as an image byte array.
+        /// </returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when a screenshot cannot be captured or contains no image data.
+        /// </exception>
+        [SupportedOSPlatform("windows")]
+        [RequiresRuntime(6, 1, "WINDOWS")]
+        public byte[] GetBytesOfCachedScreenshotBytes(
+            ImageFormat? imageFormat = null)
         {
-            imageFormat = imageFormat ?? ImageFormat.Png; // 預設使用png格式來儲存截圖
+            var format =
+                imageFormat ?? ImageFormat.Png;
 
-            // 如果目前沒有截圖，先執行一次抓取
-            if(_fullBitmap == null)
+            if (_rawScreenshot is null)
             {
                 TakeScreenshot();
             }
 
-            using(var ms = new MemoryStream())
+            if (_rawScreenshot is null)
             {
-                // 將 Bitmap 轉為 特定格式的 byte array
-                _fullBitmap!.Save(ms , imageFormat);
-                return ms.ToArray();
+                throw new InvalidOperationException(
+                    "A screenshot could not be captured from the Appium driver.");
             }
+
+            var rawBytes =
+                _rawScreenshot.AsByteArray;
+
+            if (rawBytes is null || rawBytes.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "The captured screenshot contains no image data.");
+            }
+
+            if (format.Guid == ImageFormat.Png.Guid)
+            {
+                return rawBytes;
+            }
+
+            using var inputStream =
+                new MemoryStream(
+                    rawBytes,
+                    writable: false);
+
+            using var bitmap =
+                new Bitmap(inputStream);
+
+            using var outputStream =
+                new MemoryStream();
+
+            bitmap.Save(
+                outputStream,
+                format);
+
+            return outputStream.ToArray();
         }
+
 
         private void ExecuteWithLogging(string filename , Action action)
         {
