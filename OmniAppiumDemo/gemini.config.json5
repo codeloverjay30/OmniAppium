@@ -1,0 +1,10 @@
+{
+    // Gemini Flash-Lite GA model.
+    "Model": "gemini-3.5-flash-lite",
+
+    // Gemini generateContent REST API version.
+    "ApiVersion": "v1beta",
+
+    // Gemini API base address.
+    "BaseAddress": "https://generativelanguage.googleapis.com/"
+}

@@ -1,10 +1,7 @@
 ﻿#define DEVELOPING
-#undef SIMPLE_TESTING
-
 #define IS_LOGGING
 #define AUTO_EXECUTE_TASKS
 
-// using AiUtility.GeminiUtilityServices.Services;
 using AiUtility.AiBaseUtilityServices.Models;
 using AiUtility.AiBaseUtilityServices.Services;
 using AiUtility.Configurations;
@@ -12,7 +9,7 @@ using AiUtility.GeminiKits.Abstractions;
 using AiUtility.GeminiKits.Executor;
 using AiUtility.GeminiKits.Registry;
 using AiUtility.GeminiKits.Services;
-using AiUtility.GeminiUtilityServices.Extensions;
+using AiUtility.GeminiUtilityServices.Configs;
 using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
 using CommonModels;
@@ -21,299 +18,544 @@ using EnumUtilityServices;
 using ExpressionTreeUtilityServices;
 using JsonUtilityServices;
 using LoggerFactoryUtilityServices;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using OmniAppium.BaseUtilityService;
 using OmniAppium.ConfigUtilityService.Controllers;
 using OmniAppium.ConfigUtilityService.Factories;
 using OmniAppium.ConfigUtilityService.Models;
-using OmniAppium.EngineUtilityService.Services;
+using OmniAppium.ConfigUtilityService.Services;
 using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.LogServices;
-using OpenQA.Selenium.Appium;
-using OpenQA.Selenium.Appium.Android;
-using OpenQA.Selenium.Interactions;
 using ReflectionUtilityServices;
-using Serilog;
-using Serilog.Core;
-using Serilog.Extensions.Logging;
-using System.Reflection;
-using System.Text.Json;
 using ThreadLevelLockingUtilityServices;
 using ThreadLevelLockingUtilityServices.Models;
 using TransversalUtilityServices;
 using TypeUtilityServices;
-using static OmniAppium.Options.JsonOptions;
-
-
-JsonSerializerOptions _options = new JsonSerializerOptions
-{
-    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping ,
-    WriteIndented = true
-};
 
 #if DEVELOPING
-string appDir = AppDomain.CurrentDomain.BaseDirectory;
-var logDirectory = Path.Combine(appDir , "Logs");
 
-var loggingConfigurationService = new LoggingConfigurationService { LogDirectory = logDirectory };
+var appDir = AppDomain.CurrentDomain.BaseDirectory;
+
+var developmentDeviceConfigPath =
+    Path.Combine(appDir, "development-device.config.json5");
+
+var appConfigPath =
+    Path.Combine(appDir, "app.config.json5");
+
+var appiumConfigPath =
+    Path.Combine(appDir, "appium.config.json5");
+
+var connectionConfigPath =
+    Path.Combine(appDir, "connection.config.json5");
+
+var gameConfigPath =
+    Path.Combine(appDir, "game.config.json5");
+
+var jobsConfigPath =
+    Path.Combine(appDir, "jobs.config.json5");
+
+var geminiSecureConfigPath =
+    Path.Combine(appDir, "secure.config.json5");
+
+string geminiConfigPath = Path.Combine(
+    appDir ,
+    "gemini.config.json5");
+
+var logDirectory =
+    Path.Combine(appDir, "Logs");
+
+var screenshotsDirectory =
+    Path.Combine(appDir, "Screenshots");
+
+Directory.CreateDirectory(logDirectory);
+Directory.CreateDirectory(screenshotsDirectory);
+
+var loggingConfigurationService =
+    new LoggingConfigurationService
+    {
+        LogDirectory = logDirectory
+    };
+
 loggingConfigurationService.Configure(args);
-var globalLoggerFactory = loggingConfigurationService.LoggerFactory;
 
-var developmentDeviceConfigPath = Path.Combine(appDir , "development-device.config.json5");
-var appConfigPath = Path.Combine(appDir , "app.config.json5");
-var appiumConfigPath = Path.Combine(appDir , "appium.config.json5");
-var connectionConfigPath = Path.Combine(appDir , "connection.config.json5");
-var gameConfigPath = Path.Combine(appDir , "game.config.json5");
-var tasksConfigPath = Path.Combine(appDir , "tasks.config.json5");
-var geminiSecureConfigPath = Path.Combine(appDir , "secure.config.json5");
+var globalLoggerFactory =
+    loggingConfigurationService.LoggerFactory;
 
-var screenshotsDirectory = Path.Combine(appDir , "Screenshots");
-if(!Directory.Exists(screenshotsDirectory))
-{
-    Directory.CreateDirectory(screenshotsDirectory);
-}
-else
-{
-    Directory.Delete(screenshotsDirectory, true);
-    Directory.CreateDirectory(screenshotsDirectory);
-}
+ILoggerFactoryBaseUtilityService loggerFactoryService =
+    new LoggerFactoryBaseUtilityService(
+        globalLoggerFactory);
 
-var screenshot1_Path = Path.Combine(screenshotsDirectory , "screenshot1.png");
+IAiConfigService geminiConfigService =
+    new AiConfigService
+    {
+        AiConfigPath = geminiConfigPath,
+    };
+    
+GeminiApiOptions geminiApiOptions =
+    geminiConfigService.ReadData<GeminiApiOptions>();
 
-ILoggerFactoryBaseUtilityService loggerFactoryService = new LoggerFactoryBaseUtilityService(globalLoggerFactory);
+var logger =
+    loggerFactoryService.Logger;
 
-loggerFactoryService.Logger.LogInformation("Hello World");
+logger.LogInformation(
+    "Starting OmniAppium automation engine.");
 
-ITransversalService transversalService = new DFSTransversalService();
+ITransversalService transversalService =
+    new DFSTransversalService();
 
-var driverFactory = new DriverFactory(loggerFactoryService , true)
-{
-    DevelopmentDeviceConfig = new ConfigBean<DevelopmentDeviceConfig>() { Path =  developmentDeviceConfigPath },
-    AppiumConfig = new ConfigBean<AppiumConfig>() { Path = appiumConfigPath } ,
-    AppConfig = new ConfigBean<AppConfig>() { Path = appConfigPath } ,
-    ConnectionConfig = new ConfigBean<ConnectionConfig>() { Path = connectionConfigPath } ,
-    GameConfig = new ConfigBean<GameConfig>() { Path = gameConfigPath } ,
-    TransversalService = transversalService ,
-};
+var driverFactory =
+    new DriverFactory(
+        loggerFactoryService,
+        true)
+    {
+        DevelopmentDeviceConfig =
+            new ConfigBean<DevelopmentDeviceConfig>
+            {
+                Path = developmentDeviceConfigPath
+            },
+
+        AppiumConfig =
+            new ConfigBean<AppiumConfig>
+            {
+                Path = appiumConfigPath
+            },
+
+        AppConfig =
+            new ConfigBean<AppConfig>
+            {
+                Path = appConfigPath
+            },
+
+        ConnectionConfig =
+            new ConfigBean<ConnectionConfig>
+            {
+                Path = connectionConfigPath
+            },
+
+        GameConfig =
+            new ConfigBean<GameConfig>
+            {
+                Path = gameConfigPath
+            },
+
+        TransversalService = transversalService
+    };
 
 driverFactory.Initialize();
 
+var jobsConfig =
+    new JobsConfig();
+
+var jobsConfigService =
+    new ConfigService<JobsConfig>(
+        loggerFactoryService)
+    {
+        TransversalService = transversalService
+    };
+
+jobsConfigService.ValidateConfig(
+    jobsConfigPath,
+    ref jobsConfig);
+
+ArgumentNullException.ThrowIfNull(
+    jobsConfig);
+
+ArgumentNullException.ThrowIfNull(
+    jobsConfig.Jobs);
+
+if (jobsConfig.Jobs.Count == 0)
+{
+    throw new InvalidOperationException(
+        "No automation jobs were configured.");
+}
+
 #if IS_LOGGING
 
-loggerFactoryService.Logger.LogInformation(JsonSerializer.Serialize(driverFactory.DevelopmentDeviceConfig.Data));
-loggerFactoryService.Logger.LogInformation(new String('-' , 50));
-loggerFactoryService.Logger.LogInformation(JsonSerializer.Serialize(driverFactory.AppiumConfig.Data));
-loggerFactoryService.Logger.LogInformation(new String('-' , 50));
-loggerFactoryService.Logger.LogInformation(JsonSerializer.Serialize(driverFactory.AppConfig.Data));
-loggerFactoryService.Logger.LogInformation(new String('-' , 50));
-loggerFactoryService.Logger.LogInformation(JsonSerializer.Serialize(driverFactory.ConnectionConfig.Data));
-loggerFactoryService.Logger.LogInformation(new String('-' , 50));
-loggerFactoryService.Logger.LogInformation(JsonSerializer.Serialize(driverFactory.GameConfig.Data));
-loggerFactoryService.Logger.LogInformation(new String('-' , 50));
+logger.LogInformation(
+    "Loaded {JobCount} automation jobs.",
+    jobsConfig.Jobs.Count);
+
+foreach (var job in jobsConfig.Jobs)
+{
+    logger.LogInformation(
+        "Configured job: {JobType}, Name: {JobName}",
+        job.GetType().Name,
+        job.JobName);
+}
+
 #endif
 
-var driver = driverFactory.Create();
+var driver =
+    driverFactory.Create();
+
+ArgumentNullException.ThrowIfNull(driver);
+
+var driverControlService =
+    new DriverControlService
+    {
+        Driver = driver
+    };
+
+try
+{
+    ScreenService screenService =
+        new AndroidScreenService
+        {
+            Driver = driver
+        };
+
+    var developmentDeviceConfig =
+        driverFactory.DevelopmentDeviceConfig.Data;
+
+    ArgumentNullException.ThrowIfNull(
+        developmentDeviceConfig);
+
+    ArgumentNullException.ThrowIfNull(
+        developmentDeviceConfig.ScreenSize);
+
+    var referenceScreenSize =
+        developmentDeviceConfig.ScreenSize;
+
+    var currentScreenSize =
+        screenService.GetFreshScreenSize();
 
 #if IS_LOGGING
 
-ArgumentNullException.ThrowIfNull(driver , nameof(driver));
+    logger.LogInformation(
+        "Reference resolution: {Width}x{Height}",
+        referenceScreenSize.Width,
+        referenceScreenSize.Height);
 
-var driverControlService = new DriverControlService { Driver = driver };
+    logger.LogInformation(
+        "Current resolution: {Width}x{Height}",
+        currentScreenSize.Width,
+        currentScreenSize.Height);
 
-ScreenService screenService = new AndroidScreenService { Driver = driver };
+#endif
 
-var developmentDeviceConfig = driverFactory.DevelopmentDeviceConfig.Data;
-var developmentDeviceScreenSize = developmentDeviceConfig.ScreenSize;
+    IResolutionScaler resolutionScaler =
+        new ResolutionScaler(
+            referenceScreenSize.Width,
+            referenceScreenSize.Height,
+            currentScreenSize.Width,
+            currentScreenSize.Height);
+
+    IClickService clickService =
+        new ClickService(
+            loggerFactoryService,
+            true)
+        {
+            ScreenService = screenService,
+            Scaler = resolutionScaler
+        };
+
+    IWaitService waitService =
+        new WaitService(
+            loggerFactoryService,
+            true)
+        {
+            Driver = driver
+        };
+
+    using var screenshotService =
+        new ScreenshotService(
+            loggerFactoryService,
+            true)
+        {
+            Driver = driver
+        };
 
 #if AUTO_EXECUTE_TASKS
 
-var aiConfigPath = @"D:\workspace\utility_packages\experiments\Scrawler\Phone\AndroidApp\GamesScrawler\OmniAppium.Engine\OmniAppiumDemo\secure.config.json5";
+    var aiExecutionSettings =
+        new AiExecutionSettings
+        {
+            LastTokenCountNeededToBeKept = 5,
+            MaxSteps = 20,
 
-var targettDeviceScreenSize = screenService.GetFreshScreenSize();
-IResolutionScaler resolutionScaler = new ResolutionScaler(
-    developmentDeviceScreenSize.Width ,
-    developmentDeviceScreenSize.Height ,
-    targettDeviceScreenSize.Width ,
-    targettDeviceScreenSize.Height
-);
+            Threshold =
+                AiUtility.AiBaseUtilityServices
+                    .Consts.Constants
+                    .ExecutionSettings
+                    .MAX_THRESHOLD,
 
-#region ai execution settings
-AiExecutionSettings aiExecutionSettings = new AiExecutionSettings
-{
-    LastTokenCountNeededToBeKept = 5,
-    MaxSteps = 10,
-    Threshold = AiUtility.AiBaseUtilityServices.Consts.Constants.ExecutionSettings.MAX_THRESHOLD,
-    ToolExecutionTimeout = TimeSpan.FromSeconds(30),
-    ForceSequentialToolExecution = false,
-};
-#endregion
+            ToolExecutionTimeout =
+                TimeSpan.FromMinutes(2),
 
-#region `String` to `ReadOnlyMemory<char>`
-IStringFormmattingUtilityService stringFormmattingUtilityService = new StringFormmattingUtilityService();
-#endregion
+            ForceSequentialToolExecution = true
+        };
 
-#region Schema of Request for Gemini AI Studio
-GeminiGenerateRequest request = new GeminiGenerateRequest(stringFormmattingUtilityService);
-request.AddUserMessage(
-    text: "Task 1".AsMemory()
-);
+    var globalSemaphoreSlimModel =
+        new SemaphoreSlimModel
+        {
+            InitialCount = 2,
+            MaxCount = 2
+        };
 
-#endregion
+    var watchdogModel =
+        new WatchdogModel
+        {
+            Timeout =
+                TimeSpan.FromMinutes(2)
+        };
 
-#region POCO about status
-StatusJsonModels statusJsonModels = new StatusJsonModels();
-#endregion
+    var circuitBreakerModel =
+        new CircuitBreakerModel
+        {
+            ContinuousFailureCount = 0,
+            MaxAllowedFailureCount = 3,
 
-#region Service about SemaphoreSlim 
-int maxRequestsPerWindow = 2;
-TimeSpan maxLimitRate = TimeSpan.FromSeconds(30);
+            CoolDown =
+                TimeSpan.FromSeconds(30)
+        };
 
-SemaphoreSlimModel globalSemaphoreSlimModel = new SemaphoreSlimModel
-{
-    InitialCount = 5,
-    MaxCount = 5,
-};
+    ISemaphoreSlimService semaphoreSlimService =
+        new SemaphoreSlimService(
+            loggerFactoryService:
+                loggerFactoryService,
 
-WatchdogModel watchdogModel = new WatchdogModel
-{
-    Timeout = TimeSpan.FromSeconds(30),
-};
+            globalSemaphoreSlimModel:
+                globalSemaphoreSlimModel,
 
-CircuitBreakerModel circuitBreakerModel = new CircuitBreakerModel
-{
-    ContinuousFailureCount = 0,
-    MaxAllowedFailureCount = 3, 
-    CoolDown = TimeSpan.FromSeconds(30),
-};
+            maxRequestsPerWindow: 2,
 
-ISemaphoreSlimService semaphoreSlimService = new SemaphoreSlimService(
-    loggerFactoryService: loggerFactoryService,
-    globalSemaphoreSlimModel: globalSemaphoreSlimModel,
-    maxRequestsPerWindow : maxRequestsPerWindow,
-    maxLimitRate: maxLimitRate,
-    watchdogModel: watchdogModel,
-    circuitBreakerModel: circuitBreakerModel,
-    needToStartWatchDog: false
-);
+            maxLimitRate:
+                TimeSpan.FromSeconds(30),
 
-# endregion
+            watchdogModel:
+                watchdogModel,
 
-ITypeUtilityService typeUtilityService = new TypeUtilityService();
-IJsonUtilityService jsonUtilityService = new JsonUtilityService(typeUtilityService);
-IEnumUtilityService enumUtilityService = new EnumUtilityService();
+            circuitBreakerModel:
+                circuitBreakerModel,
 
-IExpressionTreeUtilityService expressionTreeUtilityService = new ExpressionTreeUtilityService();
-IReflectionUtilityService reflectionUtilityService = new ReflectionUtilityService(expressionTreeUtilityService);
+            needToStartWatchDog:
+                false);
 
-IGeminiToolRegistry geminiToolRegistry = new GeminiToolRegistry(reflectionUtilityService);
+    ITypeUtilityService typeUtilityService =
+        new TypeUtilityService();
 
-GeminiToolConverter geminiToolConverter = new GeminiToolConverter(
-    jsonUtilityService,
-    enumUtilityService
-);
- 
-IGeminiToolService geminiToolService = new GeminiToolService(
-    geminiToolRegistry, 
-    geminiToolConverter,
-    loggerFactoryService , 
-    true
-)
-{
-    ConfigPath = aiConfigPath
-};
+    IJsonUtilityService jsonUtilityService =
+        new JsonUtilityService(
+            typeUtilityService);
 
-AiBaseUtilityService aiBaseUtilityService = new AiBaseUtilityService(
-    loggerFactoryService, 
-    true
-)
-{
-    ConfigPath = aiConfigPath    
-};
+    IEnumUtilityService enumUtilityService =
+        new EnumUtilityService();
 
-ApiKeyConfig apiKeyConfig = aiBaseUtilityService.GetApiKeyConfig();
+    IExpressionTreeUtilityService expressionTreeUtilityService =
+        new ExpressionTreeUtilityService();
 
-// 確保有正確地讀取到組態
-ArgumentNullException.ThrowIfNull(apiKeyConfig);
-ArgumentNullException.ThrowIfNullOrWhiteSpace(apiKeyConfig.API_KEY);
+    IReflectionUtilityService reflectionUtilityService =
+        new ReflectionUtilityService(
+            expressionTreeUtilityService);
 
-HttpClient httpClient = new HttpClient();
-IGeminiApiClient geminiApiClient = new GeminiApiClient(
-    loggerFactoryService,
-    true
-)
-{
-    HttpClient = httpClient,
-    ApiKey = apiKeyConfig.API_KEY,
-    ConfigPath = aiConfigPath,
-};
+    IGeminiToolRegistry geminiToolRegistry =
+        new GeminiToolRegistry(
+            reflectionUtilityService);
 
-IGeminiConversationManager geminiConversationManager = new GeminiConversationManager(
-    loggerFactoryService,
-    geminiApiClient
-);
+    var geminiToolConverter =
+        new GeminiToolConverter(
+            jsonUtilityService,
+            enumUtilityService);
 
+    IGeminiToolService geminiToolService =
+        new GeminiToolService(
+            geminiToolRegistry ,
+            geminiToolConverter ,
+            loggerFactoryService ,
+            true);
 
-IGeminiToolExecutor geminiToolExecutor = new GeminiToolExecutor(
-    geminiToolRegistry,
-    typeUtilityService
-);
+    IAiConfigService aiConfigService =
+        new AiConfigService
+        {
+            AiConfigPath =
+                geminiSecureConfigPath
+        };
 
-IGeminiSessionManager geminiSessionManager = new GeminiSessionManager(
-    loggerFactoryService,
-    geminiConversationManager,
-    geminiToolService,
-    geminiToolExecutor,
-    semaphoreSlimService
-);
+    string geminiApiKey =
+        aiConfigService.GetApiKey();
 
-#if EXECUTES_TASK
-statusJsonModels = await geminiSessionManager.ExecuteWithToolSupportAsync<WorkflowProgress>(
-    request: request,
-    userTask:"自動登入",
-    settings:aiExecutionSettings
-);
+    ArgumentException.ThrowIfNullOrWhiteSpace(
+        geminiApiKey);
+
+    using var httpClient =
+        new HttpClient();
+
+    IGeminiApiClient geminiApiClient =
+        new GeminiApiClient(
+            loggerFactoryService,
+            true)
+        {
+            HttpClient = httpClient,
+
+            ApiKey =
+                geminiApiKey,
+            ApiOptions = geminiApiOptions
+        };
+
+    IGeminiConversationManager geminiConversationManager =
+        new GeminiConversationManager(
+            loggerFactoryService,
+            geminiApiClient);
+
+    IGeminiToolExecutor geminiToolExecutor =
+        new GeminiToolExecutor(
+            geminiToolRegistry,
+            typeUtilityService);
+
+    IGeminiSessionManager geminiSessionManager =
+        new GeminiSessionManager(
+            loggerFactoryService,
+            geminiConversationManager,
+            geminiToolService,
+            geminiToolExecutor,
+            semaphoreSlimService);
+
+    /*
+     * Your current GeminiJobHandler constructor still requires:
+     *
+     * IToolRegistry<ToolMetadataBase, GeminiToolAttribute>
+     * IToolDispatcher<ToolMetadataBase, GeminiToolAttribute>
+     *
+     * while the existing Gemini infrastructure exposes
+     * IGeminiToolRegistry / IGeminiToolDispatcher.
+     *
+     * This type-contract mismatch should be corrected in GeminiJobHandler
+     * before creating it here.
+     */
+
 #endif
+
+    var handlers =
+        new List<IJobHandler>
+        {
+            new WaitJobHandler(
+                waitService),
+
+            new ClickJobHandler(
+                clickService),
+
+            new ScreenshotJobHandler(
+                screenshotService)
+        };
+
+#if AUTO_EXECUTE_TASKS
+
+    /*
+     * Add GeminiJobHandler<WorkflowProgress> here after
+     * its constructor types have been aligned with the existing
+     * Gemini abstractions.
+     *
+     * Example target shape:
+     *
+     * IProgress<WorkflowProgress> progress =
+     *     new Progress<WorkflowProgress>();
+     *
+     * var geminiJobHandler =
+     *     new GeminiJobHandler<WorkflowProgress>(
+     *         aiExecutionSettings,
+     *         geminiToolRegistry,
+     *         geminiToolDispatcher,
+     *         geminiToolConverter,
+     *         geminiSessionManager,
+     *         screenshotService,
+     *         progress);
+     *
+     * handlers.Add(geminiJobHandler);
+     */
+
+#endif
+
+IProgress<WorkflowProgress> workflowProgress =
+    new Progress<WorkflowProgress>(
+        progress =>
+        {
+#if IS_LOGGING
+
+            logger.LogInformation(
+                "AI workflow progress: {Progress}",
+                progress);
+
+#endif
+        });
+
+
+IGeminiJobHandler geminiJobHandler =
+    new GeminiJobHandler<WorkflowProgress>(
+        aiExecutionSettings:
+            aiExecutionSettings,
+
+        registry:
+            geminiToolRegistry,
+
+        converter:
+            geminiToolConverter,
+
+        sessionManager:
+            geminiSessionManager,
+
+        screenshotService:
+            screenshotService,
+
+        progressBar:
+            workflowProgress);
+
+handlers.Add(
+    geminiJobHandler);
+
+IAutoTaskExecutionUtilityService executionService =
+    new AutoTaskExecutionUtilityService(
+        handlers);
 
 #if IS_LOGGING
-loggerFactoryService.Logger.LogInformation($"statusJsonModels.IsAllSuccess:{statusJsonModels.IsAllSuccess}");
-loggerFactoryService.Logger.LogInformation($"statusJsonModels.IsAllFailure:{statusJsonModels.IsAllFailure}");
-loggerFactoryService.Logger.LogInformation($"statusJsonModels.HasNoneStatus:{statusJsonModels.HasNoneStatus}");
-loggerFactoryService.Logger.LogInformation($"statusJsonModels:{JsonSerializer.Serialize<StatusJsonModels>(statusJsonModels,DefaultOptions)}");
+
+logger.LogInformation(
+    "DIAGNOSTIC: Before ExecuteSequenceAsync. JobCount={JobCount}",
+    jobsConfig.Jobs.Count);
+
+logger.LogInformation(
+    "Starting configured automation sequence.");
+
 #endif
 
-IClickService clickService = new ClickService(loggerFactoryService , true) { ScreenService = screenService , Scaler = resolutionScaler };
-IWaitService waitService = new WaitService(loggerFactoryService , true) { Driver = driver };
-IScreenshotService screenshotService = new ScreenshotService(loggerFactoryService , true) { Driver = driver };
+await executionService.ExecuteSequenceAsync(
+    jobsConfig.Jobs);
 
 #if IS_LOGGING
-loggerFactoryService.Logger.LogInformation("Wait 10s to load the app");
+
+logger.LogInformation(
+    "DIAGNOSTIC: After ExecuteSequenceAsync.");
+
+logger.LogInformation(
+    "Configured automation sequence completed.");
+
 #endif
+}
+catch (Exception ex)
+{
+    logger.LogCritical(
+        ex,
+        "OmniAppium automation sequence terminated unexpectedly.");
 
-waitService.Wait(10000);
-
-// clickService.TapAt(1957 , 172);
-clickService.TapAt(1167 , 740);
-
-screenshotService.TakeAndSaveScreenshot(screenshot1_Path);
-#endif
+    throw;
+}
+finally
+{
+    try
+    {
+        driverControlService.Dispose();
 
 #if IS_LOGGING
-loggerFactoryService.Logger.LogInformation("The driver has clicked by finger");
-#endif
 
-driverControlService.Dispose();
-
-#if IS_LOGGING
-loggerFactoryService.Logger.LogInformation("The driver has been disposed");
-#endif
+        logger.LogInformation(
+            "Android driver was disposed.");
 
 #endif
+    }
+    catch (Exception disposeException)
+    {
+        logger.LogError(
+            disposeException,
+            "Failed to dispose the Android driver.");
+    }
+}
 
 #endif
-
-Console.ReadKey();
-
-
-
-
