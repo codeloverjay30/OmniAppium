@@ -1,54 +1,94 @@
-﻿using AiUtility.GeminiKits.Abstractions;
-using AiUtility.GeminiUtilityServices.Models;
-using AiUtility.GeminiUtilityServices.Services;
-using AssemblyUtilityServices;
-using LoggerFactoryUtilityServices;
-using Microsoft.Extensions.Logging;
-using OmniAppium.ConfigUtilityService.Models;
-using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using OmniAppium.ConfigUtilityService.Models;
 
-namespace OmniAppium.EngineUtilityService.Utilities
+namespace OmniAppium.EngineUtilityService.Utilities;
+
+/// <summary>
+/// Dispatches automation jobs to their corresponding job handlers.
+/// </summary>
+public sealed class AutoTaskExecutionUtilityService
+    : IAutoTaskExecutionUtilityService
 {
-    public class AutoTaskExecutionUtilityService(
-        IGeminiAgentService aiAgentService,
-        IEnumerable<IJobHandler> handlers
-    ) : IAutoTaskExecutionUtilityService
+    private readonly IReadOnlyList<IJobHandler> _handlers;
+
+    /// <summary>
+    /// Initializes a new automation job execution service.
+    /// </summary>
+    /// <param name="handlers">The registered job handlers.</param>
+    public AutoTaskExecutionUtilityService(
+        IEnumerable<IJobHandler> handlers)
     {
-        private readonly IGeminiAgentService _aiAgentService = aiAgentService;
-        private ILogger _logger => _aiAgentService.LoggerFactoryService.Logger;
-        private IAssembliesUtilityService _assembliesUilityService => _aiAgentService.AssembliesUtilityService;
-        private GeminiGenerateRequest _request => _aiAgentService.Request;
-        private IGeminiToolDispatcher _dispatcher => _aiAgentService.Dispatcher;
-        private IGeminiToolService _toolService => _aiAgentService.ToolService;
-        private IGeminiConversationManager _conversationManager => _aiAgentService.ConversationManager;
-        private IGeminiToolRegistry _toolRegistry => _aiAgentService.ToolRegistry;
-        private GeminiTool _tool => _aiAgentService.Tool;
+        ArgumentNullException.ThrowIfNull(handlers);
 
-        public async Task ExecuteAsync(Job job)
+        _handlers = handlers.ToArray();
+
+        if (_handlers.Count == 0)
         {
-            // 尋找第一個可以處理該 Job 的 Handler
-            var handler = handlers.FirstOrDefault(h => h.CanHandle(job));
-
-            if(handler != null)
-            {
-                await handler.AutoExecuteAsync(job);
-            }
-            else
-            {
-                // 可以根據需求決定是否拋出異常或記錄 Log
-                throw new NotSupportedException($"沒有找到能處理 {job.GetType().Name} 的 Handler。");
-            }
+            throw new ArgumentException(
+                "At least one job handler must be registered.",
+                nameof(handlers));
         }
 
-        // 批次執行多個任務 (例如從 JSON 讀取的任務清單)
-        public async Task ExecuteSequenceAsync(IEnumerable<Job> jobs)
+        if (_handlers.Any(static handler => handler is null))
         {
-            foreach(var job in jobs)
-            {
-                await ExecuteAsync(job);
-            }
+            throw new ArgumentException(
+                "The job handler collection must not contain null entries.",
+                nameof(handlers));
         }
+    }
+
+    /// <summary>
+    /// Executes a single automation job.
+    /// </summary>
+    /// <param name="job">The automation job.</param>
+    /// <returns>A task representing the execution.</returns>
+    public async Task ExecuteAsync(Job job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        var handler = ResolveHandler(job);
+
+        await handler.AutoExecuteAsync(job);
+    }
+
+    /// <summary>
+    /// Executes automation jobs sequentially in the supplied order.
+    /// </summary>
+    /// <param name="jobs">The ordered automation jobs.</param>
+    /// <returns>A task representing the sequence execution.</returns>
+    public async Task ExecuteSequenceAsync(
+        IEnumerable<Job> jobs)
+    {
+        ArgumentNullException.ThrowIfNull(jobs);
+
+        foreach (var job in jobs)
+        {
+            ArgumentNullException.ThrowIfNull(job);
+
+            await ExecuteAsync(job);
+        }
+    }
+
+    /// <summary>
+    /// Resolves exactly one handler for the specified automation job.
+    /// </summary>
+    /// <param name="job">The automation job.</param>
+    /// <returns>The unique matching handler.</returns>
+    private IJobHandler ResolveHandler(Job job)
+    {
+        var matchingHandlers = _handlers
+            .Where(handler => handler.CanHandle(job))
+            .Take(2)
+            .ToArray();
+
+        return matchingHandlers.Length switch
+        {
+            0 => throw new NotSupportedException(
+                $"No handler is registered for job type '{job.GetType().Name}'."),
+
+            1 => matchingHandlers[0],
+
+            _ => throw new InvalidOperationException(
+                $"Multiple handlers are registered for job type '{job.GetType().Name}'.")
+        };
     }
 }
