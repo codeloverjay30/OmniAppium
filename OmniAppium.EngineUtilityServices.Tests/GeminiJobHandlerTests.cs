@@ -1,31 +1,39 @@
 using AiUtility.AiBaseUtilityServices.Models;
-using AiUtility.GeminiKits.Models;
-using AiUtility.GeminiUtilityServices.DataAnnotations;
+using AiUtility.GeminiKits.Abstractions;
+using AiUtility.GeminiKits.Services;
 using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
 using AiUtility.ToolKits.Abstractions;
+using AiUtility.ToolKits.Consts;
 using CommonModels;
+using EnumUtilityServices;
 using FluentAssertions;
+using JsonUtilityServices;
 using Moq;
 using OmniAppium.ConfigUtilityService.Models;
 using OmniAppium.EngineUtilityService.Utilities;
+using System.Collections.Concurrent;
 using System.Drawing.Imaging;
-using System.Timers;
+using System.Runtime.Versioning;
 
 namespace OmniAppium.EngineUtilityServices.Tests;
 
-public class TestProgress : WorkflowProgress { }
+public class TestProgress : WorkflowProgress
+{
+}
 
+[SupportedOSPlatform("windows")]
 public class GeminiJobHandlerTests
 {
-    private Mock<IToolRegistry<ToolMetadataBase , GeminiToolAttribute>> _mockRegistry;
-    private Mock<IToolDispatcher<ToolMetadataBase , GeminiToolAttribute>> _mockDispatcher;
-    private Mock<IAiToolConverter<GeminiToolDeclaration>> _mockConverter;
-    private Mock<IGeminiSessionManager> _mockSessionManager;
-    private Mock<IScreenshotService> _mockScreenshotService;
-    private Mock<IProgress<TestProgress>> _mockProgress;
-    private AiExecutionSettings _settings;
-    private GeminiJobHandler<TestProgress> _handler;
+    private Mock<IGeminiToolRegistry> _mockRegistry = null!;
+    private Mock<IJsonUtilityService> _mockJsonUtilityService = null!;
+    private Mock<IEnumUtilityService> _mockEnumUtilityService = null!;
+    private Mock<GeminiToolConverter> _mockConverter = null!;
+    private Mock<IGeminiSessionManager> _mockSessionManager = null!;
+    private Mock<IScreenshotService> _mockScreenshotService = null!;
+    private Mock<IProgress<TestProgress>> _mockProgress = null!;
+    private AiExecutionSettings _settings = null!;
+    private GeminiJobHandler<TestProgress> _handler = null!;
 
     public GeminiJobHandlerTests()
     {
@@ -34,9 +42,19 @@ public class GeminiJobHandlerTests
 
     private void Setup()
     {
-        _mockRegistry = new Mock<IToolRegistry<ToolMetadataBase , GeminiToolAttribute>>();
-        _mockDispatcher = new Mock<IToolDispatcher<ToolMetadataBase , GeminiToolAttribute>>();
-        _mockConverter = new Mock<IAiToolConverter<AiUtility.GeminiKits.Models.GeminiToolDeclaration>>();
+        _mockRegistry = new Mock<IGeminiToolRegistry>();
+        _mockJsonUtilityService = new Mock<IJsonUtilityService>();
+        _mockEnumUtilityService = new Mock<IEnumUtilityService>();
+
+        _mockConverter = new Mock<GeminiToolConverter>(
+            _mockJsonUtilityService.Object,
+            _mockEnumUtilityService.Object,
+            AiToolConstants.DefaultDescription,
+            AiToolConstants.DefaultParameterDescription)
+        {
+            CallBase = true
+        };
+
         _mockSessionManager = new Mock<IGeminiSessionManager>();
         _mockScreenshotService = new Mock<IScreenshotService>();
         _mockProgress = new Mock<IProgress<TestProgress>>();
@@ -46,79 +64,88 @@ public class GeminiJobHandlerTests
             ToolExecutionTimeout = TimeSpan.FromSeconds(30)
         };
 
+        _mockRegistry
+            .Setup(r => r.GetAllTools())
+            .Returns(new List<GeminiToolMetadata>());
+
+        _mockScreenshotService
+            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
+            .Returns([0x01]);
+
         _handler = new GeminiJobHandler<TestProgress>(
-            _settings ,
-            _mockRegistry.Object ,
-            _mockDispatcher.Object ,
-            _mockConverter.Object ,
-            _mockSessionManager.Object ,
-            _mockScreenshotService.Object ,
-            _mockProgress.Object
-        );
+            _settings,
+            _mockRegistry.Object,
+            _mockConverter.Object,
+            _mockSessionManager.Object,
+            _mockScreenshotService.Object,
+            _mockProgress.Object);
     }
 
     [Fact]
     public void CanHandle_ShouldReturnTrue_ForGeminiJob()
     {
-        Setup();
         // Arrange
         var job = new GeminiJob();
 
         // Act
-        var result = _handler.CanHandle(job);
+        bool result = _handler.CanHandle(job);
 
         // Assert
-        Assert.True(result);
+        result.Should().BeTrue();
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ShouldThrowException_WhenRequiredFieldsAreMissing()
     {
-        Setup();
-        // Arrange: 缺少 Prompt 的 Job
-        var invalidJob = new GeminiJob { UserTask = "Do something" };
+        // Arrange
+        var invalidJob = new GeminiJob
+        {
+            UserTask = "Do something"
+        };
 
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _handler.AutoExecuteAsync(invalidJob));
+        // Act
+        Func<Task> act =
+            () => _handler.AutoExecuteAsync(invalidJob);
+
+        // Assert
+        await act.Should()
+            .ThrowAsync<ArgumentNullException>()
+            .WithMessage("*Prompt*");
     }
 
     [Fact]
-    public async Task AutoExecuteAsync_ShouldCorrectilyInvokeSessionManager()
+    public async Task AutoExecuteAsync_ShouldCorrectlyInvokeSessionManager()
     {
-        Setup();
         // Arrange
         var gJob = new GeminiJob
         {
-            Prompt = "Find the login button" ,
+            Prompt = "Find the login button",
             UserTask = "Login Task"
         };
 
-        var fakeScreenshot = new byte [ ] { 0x01 , 0x02 , 0x03 };
+        byte[] fakeScreenshot = [0x01, 0x02, 0x03];
+
         _mockScreenshotService
             .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
             .Returns(fakeScreenshot);
 
-        _mockRegistry
-            .Setup(r => r.GetAllTools())
-            .Returns(new List<ToolMetadataBase>());
-
         // Act
         await _handler.AutoExecuteAsync(gJob);
 
-        // Assert: 驗證是否有呼叫 SessionManager 執行 AI 邏輯
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.Is<GeminiGenerateRequest>(r => r.Prompt == gJob.Prompt) ,
-            gJob.UserTask ,
-            _settings ,
-            It.IsAny<CancellationToken>() ,
-            _mockProgress.Object
-        ) , Times.Once);
+        // Assert
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.Is<GeminiGenerateRequest>(r => r.Prompt == gJob.Prompt),
+                gJob.UserTask,
+                _settings,
+                It.IsAny<CancellationToken>(),
+                _mockProgress.Object),
+            Times.Once);
     }
 
     [Fact]
-    public void SetExecutionSettings_ShouldUpdateSettings_WhenValid()
+    public void SetExecutionSettings_ShouldNotThrow_WhenSettingsAreValid()
     {
-        Setup();
         // Arrange
         var newSettings = new AiExecutionSettings
         {
@@ -126,10 +153,11 @@ public class GeminiJobHandlerTests
         };
 
         // Act
-        _handler.SetExecutionSettings(newSettings);
+        Action act =
+            () => _handler.SetExecutionSettings(newSettings);
 
         // Assert
-        Assert.Equal(newSettings.ToolExecutionTimeout , _handler._aiExecutionSettings.ToolExecutionTimeout);
+        act.Should().NotThrow();
     }
 
     [Fact]
@@ -138,303 +166,350 @@ public class GeminiJobHandlerTests
         // Arrange
         var gJob = new GeminiJob
         {
-            Prompt = "Test Prompt" ,
+            Prompt = "Test Prompt",
             UserTask = "Test Task"
         };
 
-        // 模擬截圖回傳
-        _mockScreenshotService
-            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns(new byte [ ] { 0x01 });
-
-        // 模擬工具註冊
-        _mockRegistry.Setup(r => r.GetAllTools()).Returns(new List<ToolMetadataBase>());
-
-        // 重點：模擬 SessionManager 在被呼叫時拋出取消異常
-        // 因為 GeminiJobHandler 內部使用的是基於 Timeout 的 CTS.Token，
-        // 我們透過 Mock 確保當該方法執行時，會反應出取消狀態。
         _mockSessionManager
             .Setup(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>() ,
-                It.IsAny<string>() ,
-                It.IsAny<AiExecutionSettings>() ,
-                It.IsAny<CancellationToken>() ,
-                It.IsAny<IProgress<TestProgress>>()
-            ))
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()))
             .ThrowsAsync(new OperationCanceledException());
 
-        // Act & Assert
-        // 驗證 Handler 是否將來自 SessionManager 的取消異常正確向上拋出
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            _handler.AutoExecuteAsync(gJob));
+        // Act
+        Func<Task> act =
+            () => _handler.AutoExecuteAsync(gJob);
 
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.IsAny<GeminiGenerateRequest>() ,
-            It.IsAny<string>() ,
-            It.IsAny<AiExecutionSettings>() ,
-            It.IsAny<CancellationToken>() ,
-            It.IsAny<IProgress<TestProgress>>()
-        ) , Times.Once);
+        // Assert
+        await act.Should()
+            .ThrowAsync<OperationCanceledException>()
+            .WithMessage("*canceled*");
+
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()),
+            Times.Once);
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ShouldHandleEmptyToolRegistry_Successfully()
     {
-        Setup();
-        // Arrange: 模擬工具註冊表回傳空清單
-        var gJob = new GeminiJob { Prompt = "Simple Task" , UserTask = "Task" };
-
-        _mockRegistry
-            .Setup(r => r.GetAllTools())
-            .Returns(new List<ToolMetadataBase>()); // 回傳空清單
-
-        _mockScreenshotService
-            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns(new byte [ ] { 0x01 });
+        // Arrange
+        var gJob = new GeminiJob
+        {
+            Prompt = "Simple Task",
+            UserTask = "Task"
+        };
 
         // Act
         await _handler.AutoExecuteAsync(gJob);
 
-        // Assert: 驗證即使沒有工具，SessionManager 仍應被呼叫且 tools 參數為空
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.Is<GeminiGenerateRequest>(r => r.Prompt == gJob.Prompt) ,
-            It.IsAny<string>() ,
-            It.IsAny<AiExecutionSettings>() ,
-            It.IsAny<CancellationToken>() ,
-            It.IsAny<IProgress<TestProgress>>()
-        ) , Times.Once);
+        // Assert
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.Is<GeminiGenerateRequest>(r => r.Prompt == gJob.Prompt),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()),
+            Times.Once);
 
-        _mockConverter.Verify(c => c.ToToolDeclaration(It.IsAny<ToolMetadataBase>()) , Times.Never);
+        _mockConverter.Verify(
+            c => c.ToToolDeclaration(It.IsAny<ToolMetadataBase>()),
+            Times.Never);
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ShouldThrowException_WhenConverterFails()
     {
-        Setup();
         // Arrange
-        var gJob = new GeminiJob { Prompt = "Task with tools" , UserTask = "Task" };
+        var gJob = new GeminiJob
+        {
+            Prompt = "Task with tools",
+            UserTask = "Task"
+        };
 
-        // 建立 Dummy 參數以符合 ToolMetadataBase 的 protected constructor 要求
-        var dummyName = "TestFunction";
-        var dummyMethod = typeof(object).GetMethod(nameof(object.ToString));
-        var dummyParams = Array.Empty<System.Reflection.ParameterInfo>();
-        var dummyAttrs = Enumerable.Empty<Attribute>();
+        string dummyName = "TestFunction";
+        var dummyMethod =
+            typeof(object).GetMethod(
+                nameof(object.ToString),
+                Type.EmptyTypes)!;
 
-        // 在 Mock 中傳入建構參數
-        var mockTool = new Mock<ToolMetadataBase>(
-            dummyName ,
-            dummyMethod ,
-            dummyParams ,
-            (Func<object? , object? [ ]? , object?>)((obj , p) => null) , // FastInvoke
-            (Func<object>)(() => new object()) , // InstanceFactory
-            dummyAttrs
-        );
+        var dummyParams =
+            Array.Empty<System.Reflection.ParameterInfo>();
+
+        var dummyAttrs =
+            Enumerable.Empty<Attribute>();
+
+        var tool = new GeminiToolMetadata(
+            dummyName,
+            dummyMethod,
+            dummyParams,
+            (Func<object?, object?[]?, object?>)((_, _) => null),
+            (Func<object>)(() => new object()),
+            dummyAttrs);
 
         _mockRegistry
             .Setup(r => r.GetAllTools())
-            .Returns(new List<ToolMetadataBase> { mockTool.Object });
+            .Returns(new List<GeminiToolMetadata>
+            {
+                tool
+            });
 
         _mockConverter
             .Setup(c => c.ToToolDeclaration(It.IsAny<ToolMetadataBase>()))
-            .Throws(new InvalidOperationException("Converter failed"));
+            .Throws(
+                new InvalidOperationException(
+                    "Converter failed"));
 
-        _mockScreenshotService
-            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<System.Drawing.Imaging.ImageFormat>()))
-            .Returns(new byte [ ] { 0x01 });
+        // Act
+        Func<Task> act =
+            () => _handler.AutoExecuteAsync(gJob);
 
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _handler.AutoExecuteAsync(gJob));
+        // Assert
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("Converter failed");
     }
 
     [Fact]
-    public async Task AutoExecuteAsync_ShouldHandleScreenshotServiceReturningNull_Successfully()
+    public async Task AutoExecuteAsync_ShouldThrowException_WhenScreenshotIsEmpty()
     {
-        Setup();
-        // Arrange: 模擬截圖服務回傳空值（例如設備斷線時）
-        var gJob = new GeminiJob { Prompt = "Task without screen" , UserTask = "Task" };
+        // Arrange
+        var gJob = new GeminiJob
+        {
+            Prompt = "Task without screen",
+            UserTask = "Task"
+        };
 
         _mockScreenshotService
             .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns((byte [ ])null); // 回傳 null
-
-        _mockRegistry
-            .Setup(r => r.GetAllTools())
-            .Returns(new List<ToolMetadataBase>());
+            .Returns(Array.Empty<byte>());
 
         // Act
-        // 注意：這裡取決於 AddUserMessage 內部是否允許 null。如果內部會報錯，此測試應改為 Assert.Throws
-        await _handler.AutoExecuteAsync(gJob);
+        Func<Task> act =
+            () => _handler.AutoExecuteAsync(gJob);
 
-        // Assert: 驗證流程是否能走到 SessionManager
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.IsAny<GeminiGenerateRequest>() ,
-            It.IsAny<string>() ,
-            It.IsAny<AiExecutionSettings>() ,
-            It.IsAny<CancellationToken>() ,
-            It.IsAny<IProgress<TestProgress>>()
-        ) , Times.Once);
+        // Assert
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("*empty image buffer*");
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ShouldHandleEmptyTools_Successfully()
     {
         // Arrange
-        var gJob = new GeminiJob { Prompt = "Simple Task" , UserTask = "Task" };
-        _mockRegistry.Setup(r => r.GetAllTools()).Returns(new List<ToolMetadataBase>());
-
-        _mockScreenshotService
-            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns(new byte [ ] { 0x12 });
+        var gJob = new GeminiJob
+        {
+            Prompt = "Simple Task",
+            UserTask = "Task"
+        };
 
         // Act
         await _handler.AutoExecuteAsync(gJob);
 
         // Assert
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.IsAny<GeminiGenerateRequest>() ,
-            It.IsAny<string>() ,
-            It.IsAny<AiExecutionSettings>() ,
-            It.IsAny<CancellationToken>() ,
-            It.IsAny<IProgress<TestProgress>>()
-        ) , Times.Once);
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()),
+            Times.Once);
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ShouldUseUpdatedSettings_AfterSetExecutionSettingsIsCalled()
     {
-        Setup();
         // Arrange
-        var gJob = new GeminiJob { Prompt = "Test" , UserTask = "Task" };
-        var newSettings = new AiExecutionSettings
+        var gJob = new GeminiJob
         {
-            ToolExecutionTimeout = TimeSpan.FromSeconds(99) // 特殊的時間
+            Prompt = "Test",
+            UserTask = "Task"
         };
 
-        _mockScreenshotService
-            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns(new byte [ ] { 0x01 });
+        var newSettings = new AiExecutionSettings
+        {
+            ToolExecutionTimeout = TimeSpan.FromSeconds(99)
+        };
 
         // Act
         _handler.SetExecutionSettings(newSettings);
         await _handler.AutoExecuteAsync(gJob);
 
-        // Assert: 驗證傳給 sessionManager 的 settings 物件是更新後的那一個
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.IsAny<GeminiGenerateRequest>() ,
-            It.IsAny<string>() ,
-            It.Is<AiExecutionSettings>(settings => settings.ToolExecutionTimeout.TotalSeconds == 99) ,
-            It.IsAny<CancellationToken>() ,
-            It.IsAny<IProgress<TestProgress>>()
-        ) , Times.Once);
+        // Assert
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.Is<AiExecutionSettings>(
+                    settings =>
+                        settings.ToolExecutionTimeout ==
+                        TimeSpan.FromSeconds(99)),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()),
+            Times.Once);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task AutoExecuteAsync_ShouldThrowException_WhenPromptIsWhiteSpace(string invalidPrompt)
+    public async Task AutoExecuteAsync_ShouldThrowException_WhenPromptIsWhiteSpace(
+        string invalidPrompt)
     {
-        Setup();
         // Arrange
         var invalidJob = new GeminiJob
         {
-            Prompt = invalidPrompt ,
+            Prompt = invalidPrompt,
             UserTask = "Valid Task"
         };
 
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => _handler.AutoExecuteAsync(invalidJob));
+        // Act
+        Func<Task> act =
+            () => _handler.AutoExecuteAsync(invalidJob);
+
+        // Assert
+        await act.Should()
+            .ThrowAsync<ArgumentException>()
+            .WithMessage("*Prompt*");
     }
 
     [Theory]
     [InlineData("This is a prompt")]
     [InlineData("WTF")]
-    public async Task AutoExecuteAsync_ShouldNotThrowException_WhenPromptIsNotWhiteSpace(string validPrompt)
+    public async Task AutoExecuteAsync_ShouldNotThrowException_WhenPromptIsNotWhiteSpace(
+        string validPrompt)
     {
-        Setup();
         // Arrange
-        var invalidJob = new GeminiJob
+        var validJob = new GeminiJob
         {
-            Prompt = validPrompt ,
+            Prompt = validPrompt,
             UserTask = "Valid Task"
         };
 
-        // Act & Assert
-        // await Assert.ThrowsAsync<ArgumentException>(() => _handler.AutoExecuteAsync(invalidJob));
+        // Act
+        Func<Task> act =
+            () => _handler.AutoExecuteAsync(validJob);
+
+        // Assert
+        await act.Should().NotThrowAsync();
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ShouldHandleConcurrentRequests_Independently()
     {
-        Setup();
         // Arrange
-        var job1 = new GeminiJob { Prompt = "Prompt 1" , UserTask = "Task 1" };
-        var job2 = new GeminiJob { Prompt = "Prompt 2" , UserTask = "Task 2" };
+        var job1 = new GeminiJob
+        {
+            Prompt = "Prompt 1",
+            UserTask = "Task 1"
+        };
 
-        // Act: 模擬併發執行
-        var task1 = _handler.AutoExecuteAsync(job1);
-        var task2 = _handler.AutoExecuteAsync(job2);
+        var job2 = new GeminiJob
+        {
+            Prompt = "Prompt 2",
+            UserTask = "Task 2"
+        };
 
-        await Task.WhenAll(task1 , task2);
+        // Act
+        Task task1 =
+            _handler.AutoExecuteAsync(job1);
 
-        // Assert: 驗證 SessionManager 接收到的 Request 內容與對應的 Job 是一致的
-        // 如果這個測試失敗，代表你的 DefaultRequest 物件被複用了，導致資料錯亂
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.Is<GeminiGenerateRequest>(r => r.Prompt == "Prompt 1") , "Task 1" , It.IsAny<AiExecutionSettings>() , It.IsAny<CancellationToken>() , It.IsAny<IProgress<TestProgress>>()) , Times.Once);
+        Task task2 =
+            _handler.AutoExecuteAsync(job2);
 
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.Is<GeminiGenerateRequest>(r => r.Prompt == "Prompt 2") , "Task 2" , It.IsAny<AiExecutionSettings>() , It.IsAny<CancellationToken>() , It.IsAny<IProgress<TestProgress>>()) , Times.Once);
+        await Task.WhenAll(task1, task2);
+
+        // Assert
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.Is<GeminiGenerateRequest>(
+                    r => r.Prompt == "Prompt 1"),
+                "Task 1",
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()),
+            Times.Once);
+
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.Is<GeminiGenerateRequest>(
+                    r => r.Prompt == "Prompt 2"),
+                "Task 2",
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()),
+            Times.Once);
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ShouldPassProgressBarToSessionManager()
     {
-        Setup();
         // Arrange
-        var gJob = new GeminiJob { Prompt = "Test" , UserTask = "Task" };
+        var gJob = new GeminiJob
+        {
+            Prompt = "Test",
+            UserTask = "Task"
+        };
 
         // Act
         await _handler.AutoExecuteAsync(gJob);
 
         // Assert
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.IsAny<GeminiGenerateRequest>() ,
-            It.IsAny<string>() ,
-            It.IsAny<AiExecutionSettings>() ,
-            It.IsAny<CancellationToken>() ,
-            _mockProgress.Object // 關鍵：確保注入的 Progress 物件確實被傳下去了
-        ) , Times.Once);
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                _mockProgress.Object),
+            Times.Once);
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ShouldOverwriteDataInStaticInstance()
     {
-        Setup();
         // Arrange
-        var job1 = new GeminiJob { Prompt = "Prompt A" , UserTask = "Task A" };
-        var job2 = new GeminiJob { Prompt = "Prompt B" , UserTask = "Task B" };
+        var job1 = new GeminiJob
+        {
+            Prompt = "Prompt A",
+            UserTask = "Task A"
+        };
 
-        _mockScreenshotService.Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns(new byte [ ] { 0x01 });
+        var job2 = new GeminiJob
+        {
+            Prompt = "Prompt B",
+            UserTask = "Task B"
+        };
 
         // Act
         await _handler.AutoExecuteAsync(job1);
         await _handler.AutoExecuteAsync(job2);
 
-        // Assert: 驗證第二次執行時，傳給 SessionManager 的 Prompt 確實是第二次的資料
-        _mockSessionManager.Verify(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-            It.Is<GeminiGenerateRequest>(r => r.Prompt == "Prompt B") ,
-            "Task B" ,
-            It.IsAny<AiExecutionSettings>() ,
-            It.IsAny<CancellationToken>() ,
-            It.IsAny<IProgress<TestProgress>>()
-        ) , Times.Once);
+        // Assert
+        _mockSessionManager.Verify(
+            s => s.ExecuteWithToolSupportAsync<TestProgress>(
+                It.Is<GeminiGenerateRequest>(
+                    r => r.Prompt == "Prompt B"),
+                "Task B",
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()),
+            Times.Once);
     }
 
     [Fact]
     public async Task AutoExecuteAsync_ConcurrencyTest_ShouldEnsureDataConsistency()
     {
-        Setup();
-
         // Arrange
         const int concurrentExecutionCount = 2;
 
@@ -443,7 +518,7 @@ public class GeminiJobHandlerTests
             maxCount: concurrentExecutionCount);
 
         var capturedRequests =
-            new System.Collections.Concurrent.ConcurrentBag<(string? Prompt, string UserTask)>();
+            new ConcurrentBag<(string? Prompt, string UserTask)>();
 
         _mockSessionManager
             .Setup(s => s.ExecuteWithToolSupportAsync<TestProgress>(
@@ -460,9 +535,11 @@ public class GeminiJobHandlerTests
                     CancellationToken cancellationToken,
                     IProgress<TestProgress> _) =>
                 {
-                    capturedRequests.Add((request.Prompt, userTask));
+                    capturedRequests.Add(
+                        (request.Prompt, userTask));
 
-                    await semaphore.WaitAsync(cancellationToken);
+                    await semaphore.WaitAsync(
+                        cancellationToken);
 
                     return new StatusJsonModels();
                 });
@@ -480,21 +557,28 @@ public class GeminiJobHandlerTests
         };
 
         // Act
-        var task1 = _handler.AutoExecuteAsync(job1);
-        var task2 = _handler.AutoExecuteAsync(job2);
+        Task task1 =
+            _handler.AutoExecuteAsync(job1);
 
-        semaphore.Release(concurrentExecutionCount);
+        Task task2 =
+            _handler.AutoExecuteAsync(job2);
 
-        Func<Task> act = async () =>
-            await Task.WhenAll(task1, task2);
+        semaphore.Release(
+            concurrentExecutionCount);
+
+        Func<Task> act =
+            async () =>
+                await Task.WhenAll(
+                    task1,
+                    task2);
 
         // Assert
         await act.Should().NotThrowAsync();
 
         capturedRequests.Should().BeEquivalentTo(
         [
-            ("CRITICAL_A" , "TASK_A") ,
-        ("CRITICAL_B" , "TASK_B")
+            ("CRITICAL_A", "TASK_A"),
+            ("CRITICAL_B", "TASK_B")
         ]);
 
         _mockSessionManager.Verify(
@@ -506,5 +590,4 @@ public class GeminiJobHandlerTests
                 It.IsAny<IProgress<TestProgress>>()),
             Times.Exactly(concurrentExecutionCount));
     }
-
 }
