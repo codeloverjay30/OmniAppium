@@ -7,10 +7,10 @@
         {
             "Type": "Click",
 
-            // true:
             // Position is based on the development/reference resolution.
-            // It will be transformed to the current device resolution.
-            "ScalePosition": false,
+            // It will NOT be transformed to the current device resolution.
+            "CoordinateMode": "Absolute",
+
 
             "Position": {
                 "X": 1167,
@@ -21,16 +21,32 @@
         {
             "Type": "Click",
 
-            // true:
             // Position is based on the development/reference resolution.
-            // It will be transformed to the current device resolution.
-            "ScalePosition": false,
+            // It will NOT be transformed to the current device resolution.
+            "CoordinateMode": "Absolute",
 
             "Position": {
                 "X": 500,
                 "Y": 1000
             },
             "Timeout": 1000
+        },
+
+        {
+            "Type": "Gemini",
+
+            "JobName": "CompleteDailyActivities",
+
+            "Description":
+                "Complete daily activities and claim eligible free rewards.",
+
+            "UserTask":
+                "完成每天活動並領取所有免費獎勵",
+
+            "Prompt":
+                "幫我完成每天活動並領取所有免費獎勵。請根據目前遊戲畫面自行判斷活動入口、通知紅點、Tab 與可領取項目。不要執行任何充值、購買、付款或需要真實貨幣的操作。若畫面、標題、按鈕或項目包含 NT 金額、首儲、累儲、充值、付款、購買等資訊，視為敏感操作，不得執行。",
+
+            "Timeout": 120000
         }
     ]
 }
