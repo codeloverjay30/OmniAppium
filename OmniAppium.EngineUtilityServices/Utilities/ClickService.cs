@@ -34,12 +34,12 @@ namespace OmniAppium.EngineUtilityService.Utilities
         /// <summary>
         /// Executes the specified click job.
         /// </summary>
-        /// <param name="clickJob">
-        /// The click job that defines the target or screen position.
-        /// </param>
+        /// <param name="clickJob">The click job to execute.</param>
         /// <exception cref="ArgumentException">
-        /// Thrown when the click job specifies neither a position nor a target,
-        /// or when both are specified.
+        /// Thrown when the job does not specify exactly one click target.
+        /// </exception>
+        /// <exception cref="NotSupportedException">
+        /// Thrown when the configured coordinate mode is unsupported.
         /// </exception>
         public void Click(ClickJob clickJob)
         {
@@ -57,15 +57,71 @@ namespace OmniAppium.EngineUtilityService.Utilities
 
             if (clickJob.Position is not null)
             {
-                ClickPosition(
-                    clickJob.Position,
-                    clickJob.ScalePosition);
+                switch (clickJob.CoordinateMode)
+                {
+                    case CoordinateMode.Absolute:
+                        ClickAbsolute(
+                            clickJob.Position.X,
+                            clickJob.Position.Y);
+                        return;
 
-                return;
+                    case CoordinateMode.ReferenceResolution:
+                        ClickScaled(
+                            clickJob.Position.X,
+                            clickJob.Position.Y);
+                        return;
+
+                    default:
+                        throw new NotSupportedException(
+                            $"Coordinate mode '{clickJob.CoordinateMode}' is not supported.");
+                }
             }
 
             Click(clickJob.Target!);
         }
+
+        /// <summary>
+        /// Clicks an absolute position in the current device viewport.
+        /// </summary>
+        /// <param name="x">The absolute X coordinate.</param>
+        /// <param name="y">The absolute Y coordinate.</param>
+        public void ClickAbsolute(
+            double x,
+            double y)
+        {
+            var finalX = checked((int)Math.Round(x));
+            var finalY = checked((int)Math.Round(y));
+
+            TapAt(
+                finalX,
+                finalY,
+                TimeSpan.Zero);
+        }
+
+        /// <summary>
+        /// Clicks a position defined in the reference-resolution coordinate space.
+        /// </summary>
+        /// <param name="x">The reference-resolution X coordinate.</param>
+        /// <param name="y">The reference-resolution Y coordinate.</param>
+        public void ClickScaled(
+            double x,
+            double y)
+        {
+            var basePoint = new CoordinateUtilityServices.Point(
+                x,
+                y);
+
+            var scaledPoint = Scaler.Transform(basePoint);
+
+            var (finalX, finalY) =
+                scaledPoint.ToRoundedInt();
+
+            TapAt(
+                finalX,
+                finalY,
+                TimeSpan.Zero);
+        }
+
 
 
         [GeminiTool(Description = "在手機畫面的基準解析度座標執行點擊。rx, ry 為 0~基準寬度/高度")]
