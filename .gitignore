@@ -42,6 +42,8 @@ local-packages
 .vscode-debug-eval.cs
 .vscode-debug-eval.*.cs
 
+# Obsidian
+.obsidian
 # configuration or rule used on AI
 ## Gemini Code Assisant VSC plugin
 Gemini.md
@@ -670,3 +672,6 @@ repomix.config.json
 #### === END OF comment === ####
 !Attachment[Ss]/
 !Attachment/
+
+!Attachment[Ss]/**/*.md
+!Attachment/**/*.md
