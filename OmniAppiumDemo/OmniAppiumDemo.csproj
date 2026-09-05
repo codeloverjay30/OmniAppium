@@ -39,6 +39,9 @@
     <None Update="game.config.json5">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="gemini.config.json5">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="jobs.config.json5">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
