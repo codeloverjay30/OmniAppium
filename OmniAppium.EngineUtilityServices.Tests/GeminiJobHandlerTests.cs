@@ -13,6 +13,7 @@ using FluentAssertions;
 using JsonUtilityServices;
 using Moq;
 using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Utilities;
 using System.Collections.Concurrent;
 using System.Drawing.Imaging;

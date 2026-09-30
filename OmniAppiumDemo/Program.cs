@@ -25,6 +25,10 @@ using OmniAppium.ConfigUtilityService.Controllers;
 using OmniAppium.ConfigUtilityService.Factories;
 using OmniAppium.ConfigUtilityService.Models;
 using OmniAppium.ConfigUtilityService.Services;
+using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityService.Services.Screen;
+using OmniAppium.EngineUtilityService.Services.Screenshots;
+using OmniAppium.EngineUtilityService.Services.Wait;
 using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.LogServices;
 using ReflectionUtilityServices;
@@ -447,13 +451,13 @@ try
     var handlers =
         new List<IJobHandler>
         {
-            new WaitJobHandler(
+            new OmniAppium.EngineUtilityService.Utilities.WaitJobHandler(
                 waitService),
 
-            new ClickJobHandler(
+            new OmniAppium.EngineUtilityService.Utilities.ClickJobHandler(
                 clickService),
 
-            new ScreenshotJobHandler(
+            new OmniAppium.EngineUtilityService.Utilities.ScreenshotJobHandler(
                 screenshotService)
         };
 

@@ -6,6 +6,7 @@ using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
 using CommonModels;
 using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.EngineUtilityService.Services.Screenshots;
 using System.Drawing.Imaging;
 
 namespace OmniAppium.EngineUtilityService.Utilities;

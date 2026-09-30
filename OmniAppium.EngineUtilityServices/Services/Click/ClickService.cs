@@ -4,13 +4,14 @@ using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 using OmniAppium.BaseUtilityService;
 using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.EngineUtilityService.Services.Screen;
 using OpenQA.Selenium.Appium.Android;
 using OpenQA.Selenium.Interactions;
 using System.Drawing;
 using System.Text.Json;
 using Point = CoordinateUtilityServices.Point;
 
-namespace OmniAppium.EngineUtilityService.Utilities
+namespace OmniAppium.EngineUtilityService.Services.Click
 {
     /// <summary>
     /// Provides Appium click operations in absolute and reference-resolution coordinates.
@@ -153,7 +154,7 @@ namespace OmniAppium.EngineUtilityService.Utilities
         )
         {
             // 原始座標點 (這是你在開發裝狀的基準解析度下的座標)
-            var basePoint = new Point(rx , ry);
+            var basePoint = new Point(rx, ry);
 
             // 根據參數決定使用快取值或即時值
             var size = usePreloadScreenSize
@@ -163,9 +164,9 @@ namespace OmniAppium.EngineUtilityService.Utilities
             var scaledPoint = Scaler.Transform(basePoint);
 
             // 轉換成 Appium/Android 可用的整數座標
-            var (finalX , finalY) = scaledPoint.ToRoundedInt();
+            var (finalX, finalY) = scaledPoint.ToRoundedInt();
 
-            TapAt(finalX, finalY,TimeSpan.Zero);
+            TapAt(finalX, finalY, TimeSpan.Zero);
         }
 
         /// <summary>

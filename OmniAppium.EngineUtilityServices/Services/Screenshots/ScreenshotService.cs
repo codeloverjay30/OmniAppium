@@ -14,8 +14,13 @@ using System.Runtime.Versioning;
 using System.Text;
 using OmniRectangle = OmniAppium.ConfigUtilityService.Models.Rectangle; // 你的自定義類別
 
-namespace OmniAppium.EngineUtilityService.Utilities
+namespace OmniAppium.EngineUtilityService.Services.Screenshots
 {
+    /// <summary>
+    /// Captures, crops, and saves screenshots from an Android driver session.
+    /// </summary>
+    /// <param name="loggerFactoryService">The logging service.</param>
+    /// <param name="toLogWhenSuccess">Whether successful image saves should be logged.</param>
     [SupportedOSPlatform("windows")]
     [RequiresRuntime(6 , 1 , "WINDOWS")]
     public partial class ScreenshotService(
@@ -29,16 +34,26 @@ namespace OmniAppium.EngineUtilityService.Utilities
         private readonly ILogger _logger = loggerFactoryService.Logger;
         private readonly bool _toLogWhenSuccess = toLogWhenSuccess;
 
+        /// <summary>
+        /// Logs a successful screenshot save.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="filename">The destination file name.</param>
         [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Information , Message = "Successfully take Screenshot, and save it into {filename}")]
         static partial void LogSuccessForTakingScreenshot(ILogger logger , string filename);
 
+        /// <summary>
+        /// Logs a failed screenshot save.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="filename">The destination file name.</param>
         [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Error , Message = "Failed to take Screenshot, and it will NOT save it into {filename}")]
         static partial void LogFailureForTakingScreenshot(ILogger logger , string filename);
 
         public required AndroidDriver Driver { get; init; }
 
-        private Screenshot? _rawScreenshot;
-        public Screenshot? Image => _rawScreenshot;
+        private OpenQA.Selenium.Screenshot? _rawScreenshot;
+        public  OpenQA.Selenium.Screenshot? Image => _rawScreenshot;
 
         /// <summary>
         /// Cached Bitmap of Raw screenshot <see cref="_rawScreenshot"/>
@@ -84,6 +99,11 @@ namespace OmniAppium.EngineUtilityService.Utilities
         }
 
 
+        /// <summary>
+        /// Saves the cached cropped image in the specified format.
+        /// </summary>
+        /// <param name="filename">The destination file name.</param>
+        /// <param name="imageFormat">The image format, or null to use PNG.</param>
         [SupportedOSPlatform("windows")]
         [RequiresRuntime(6,1, "WINDOWS")]
         public void SaveCroppedImage(string filename , ImageFormat? imageFormat = null)
@@ -93,6 +113,10 @@ namespace OmniAppium.EngineUtilityService.Utilities
             ExecuteWithLogging(filename , () => _croppedBitmap.Save(filename , format));
         }
 
+        /// <summary>
+        /// Saves the cached raw screenshot.
+        /// </summary>
+        /// <param name="filename">The destination file name.</param>
         public void SaveImage(string filename)
         {
             ArgumentNullException.ThrowIfNull(_rawScreenshot);
@@ -139,12 +163,22 @@ namespace OmniAppium.EngineUtilityService.Utilities
                 true;
         }
 
+        /// <summary>
+        /// Crops the cached screenshot to the configured rectangle.
+        /// </summary>
+        /// <param name="area">The rectangular area to retain.</param>
         public void CropScreenshot(OmniRectangle area)
         {
             Rectangle rectangle = area.ToSystemDrawing();
             CropScreenshot(rectangle);
         }
 
+        /// <summary>
+        /// Captures a screenshot, crops it, and saves the cropped image.
+        /// </summary>
+        /// <param name="area">The rectangular area to retain.</param>
+        /// <param name="filename">The destination file name.</param>
+        /// <param name="imageFormat">The image format, or null to use PNG.</param>
         public void TakeAndSaveScreenshot(System.Drawing.Rectangle area , string filename , ImageFormat? imageFormat = null)
         {
             TakeScreenshot();
@@ -152,6 +186,12 @@ namespace OmniAppium.EngineUtilityService.Utilities
             SaveCroppedImage(filename , imageFormat);
         }
 
+        /// <summary>
+        /// Captures a screenshot, crops it, and saves the cropped image.
+        /// </summary>
+        /// <param name="area">The rectangular area to retain.</param>
+        /// <param name="filename">The destination file name.</param>
+        /// <param name="imageFormat">The image format, or null to use PNG.</param>
         public void TakeAndSaveScreenshot(OmniRectangle area , string filename , ImageFormat? imageFormat = null)
         {
             TakeScreenshot();
@@ -159,6 +199,10 @@ namespace OmniAppium.EngineUtilityService.Utilities
             SaveCroppedImage(filename , imageFormat);
         }
 
+        /// <summary>
+        /// Captures and saves a fresh screenshot.
+        /// </summary>
+        /// <param name="filename">The destination file name.</param>
         public void TakeAndSaveScreenshot(string filename)
         {
             TakeScreenshot();
@@ -230,6 +274,11 @@ namespace OmniAppium.EngineUtilityService.Utilities
         }
 
 
+        /// <summary>
+        /// Executes an image-save operation and logs its outcome.
+        /// </summary>
+        /// <param name="filename">The destination file name used in log messages.</param>
+        /// <param name="action">The image-save operation.</param>
         private void ExecuteWithLogging(string filename , Action action)
         {
             try
@@ -246,6 +295,9 @@ namespace OmniAppium.EngineUtilityService.Utilities
             }
         }
 
+        /// <summary>
+        /// Disposes and clears the cached full and cropped bitmaps.
+        /// </summary>
         private void ClearBitmaps()
         {
             _fullBitmap?.Dispose();
@@ -254,6 +306,9 @@ namespace OmniAppium.EngineUtilityService.Utilities
             _croppedBitmap = null;
         }
 
+        /// <summary>
+        /// Releases the cached bitmap resources.
+        /// </summary>
         public void Dispose()
         {
             ClearBitmaps();

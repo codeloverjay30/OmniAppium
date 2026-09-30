@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using OmniAppium.BaseUtilityService;
 using OpenQA.Selenium.Appium.Android;
 
-namespace OmniAppium.EngineUtilityService.Utilities
+namespace OmniAppium.EngineUtilityService.Services.Wait
 {
     /// <summary>
     /// Provides blocking waits for automation jobs.
