@@ -1,10 +1,12 @@
 using AiUtility.AiBaseUtilityServices.Models;
 using AiUtility.GeminiKits.Abstractions;
+using AiUtility.GeminiKits.Mappers;
 using AiUtility.GeminiKits.Services;
 using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
 using AiUtility.ToolKits.Abstractions;
 using AiUtility.ToolKits.Consts;
+using AiUtility.ToolKits.Services;
 using CommonModels;
 using EnumUtilityServices;
 using FluentAssertions;
@@ -35,8 +37,22 @@ public class GeminiJobHandlerTests
     private AiExecutionSettings _settings = null!;
     private GeminiJobHandler<TestProgress> _handler = null!;
 
+    private readonly Mock<IAiParameterSchemaGenerator>
+        _parameterSchemaGeneratorMock;
+
+    private readonly Mock<IGeminiParameterPropertyMapper>
+        _parameterPropertyMapperMock;
+
+
     public GeminiJobHandlerTests()
     {
+        _parameterSchemaGeneratorMock =
+            new Mock<IAiParameterSchemaGenerator>(MockBehavior.Strict);
+
+        _parameterPropertyMapperMock =
+            new Mock<IGeminiParameterPropertyMapper>(
+                MockBehavior.Strict);
+
         Setup();
     }
 
@@ -49,6 +65,8 @@ public class GeminiJobHandlerTests
         _mockConverter = new Mock<GeminiToolConverter>(
             _mockJsonUtilityService.Object,
             _mockEnumUtilityService.Object,
+            _parameterSchemaGeneratorMock.Object,
+            _parameterPropertyMapperMock.Object,
             AiToolConstants.DefaultDescription,
             AiToolConstants.DefaultParameterDescription)
         {
@@ -590,4 +608,82 @@ public class GeminiJobHandlerTests
                 It.IsAny<IProgress<TestProgress>>()),
             Times.Exactly(concurrentExecutionCount));
     }
+
+    [Fact]
+    public async Task AutoExecuteAsync_ShouldKeepConcurrentRequestContentsIndependent()
+    {
+        var requests = new ConcurrentQueue<GeminiGenerateRequest>();
+        var release = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        _mockSessionManager
+            .Setup(session => session.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()))
+            .Returns(async (
+                GeminiGenerateRequest request,
+                string userTask,
+                AiExecutionSettings settings,
+                CancellationToken cancellationToken,
+                IProgress<TestProgress> progress) =>
+            {
+                requests.Enqueue(request);
+                await release.Task.WaitAsync(cancellationToken);
+                return new StatusJsonModels
+                {
+                    StatusList = [new StatusJsonModel { IsSuccess = true }]
+                };
+            });
+
+        Task firstTask = _handler.AutoExecuteAsync(new GeminiJob
+        {
+            Prompt = "First isolated prompt",
+            UserTask = "First task"
+        });
+        Task secondTask = _handler.AutoExecuteAsync(new GeminiJob
+        {
+            Prompt = "Second isolated prompt",
+            UserTask = "Second task"
+        });
+        release.SetResult(true);
+        await Task.WhenAll(firstTask, secondTask);
+
+        GeminiGenerateRequest[] captured = requests.ToArray();
+        captured.Should().HaveCount(2);
+        captured[0].Should().NotBeSameAs(captured[1]);
+        captured[0].Contents.Should().NotBeSameAs(captured[1].Contents);
+        captured[0].Contents.Should().ContainSingle();
+        captured[1].Contents.Should().ContainSingle();
+        captured[0].Contents[0].Parts.Should()
+            .Contain(part => part.Text == "First isolated prompt")
+            .And.NotContain(part => part.Text == "Second isolated prompt");
+        captured[1].Contents[0].Parts.Should()
+            .Contain(part => part.Text == "Second isolated prompt")
+            .And.NotContain(part => part.Text == "First isolated prompt");
+
+        GeminiInlineData firstImage = captured[0].Contents[0].Parts
+            .Single(part => part.InlineData is not null).InlineData!;
+        GeminiInlineData secondImage = captured[1].Contents[0].Parts
+            .Single(part => part.InlineData is not null).InlineData!;
+        firstImage.Should().NotBeSameAs(secondImage);
+        string secondImageData = secondImage.Data;
+        firstImage.Data = "changed first request";
+        secondImage.Data.Should().Be(secondImageData);
+
+        captured[0].Contents.Clear();
+        await _handler.AutoExecuteAsync(new GeminiJob
+        {
+            Prompt = "Subsequent isolated prompt",
+            UserTask = "Subsequent task"
+        });
+        GeminiGenerateRequest subsequent = requests.Last();
+        subsequent.Contents.Should().ContainSingle();
+        subsequent.Contents[0].Parts.Should()
+            .Contain(part => part.Text == "Subsequent isolated prompt");
+        captured[1].Contents.Should().ContainSingle();
+    }
+
 }

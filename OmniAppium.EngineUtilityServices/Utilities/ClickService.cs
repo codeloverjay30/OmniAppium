@@ -1,4 +1,4 @@
-using AiUtility.GeminiUtilityServices.DataAnnotations;
+using AiUtility.GeminiKits.Attributes;
 using CoordinateUtilityServices;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
@@ -12,6 +12,11 @@ using Point = CoordinateUtilityServices.Point;
 
 namespace OmniAppium.EngineUtilityService.Utilities
 {
+    /// <summary>
+    /// Provides Appium click operations in absolute and reference-resolution coordinates.
+    /// </summary>
+    /// <param name="loggerFactoryService">The logging service.</param>
+    /// <param name="toLogWhenSuccess">Whether successful operations should be logged.</param>
     public partial class ClickService(
         ILoggerFactoryBaseUtilityService loggerFactoryService ,
         bool toLogWhenSuccess) :
@@ -22,9 +27,19 @@ namespace OmniAppium.EngineUtilityService.Utilities
     {
         private ILogger _logger => loggerFactoryService.Logger;
 
+        /// <summary>
+        /// Logs a successful tap.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="Position">The serialized tap position.</param>
         [LoggerMessage(Level = LogLevel.Information , Message = "Successfully tap once at Position {Position}")]
         static partial void LogSuccessForTapingAt(ILogger logger,string Position);
 
+        /// <summary>
+        /// Logs a failed tap.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="Position">The serialized tap position.</param>
         [LoggerMessage(Level = LogLevel.Error , Message = "Failed to tap once at Position {Position}")]
         static partial void LogFailureForTapingAt(ILogger logger,string Position);
         public required ScreenService ScreenService { get; init; }
@@ -124,6 +139,12 @@ namespace OmniAppium.EngineUtilityService.Utilities
 
 
 
+        /// <summary>
+        /// Clicks a reference-resolution position after scaling it to the current device.
+        /// </summary>
+        /// <param name="rx">The reference-resolution X coordinate.</param>
+        /// <param name="ry">The reference-resolution Y coordinate.</param>
+        /// <param name="usePreloadScreenSize">Whether to read the cached screen size instead of refreshing it.</param>
         [GeminiTool(Description = "在手機畫面的基準解析度座標執行點擊。rx, ry 為 0~基準寬度/高度")]
         public void Click(
             double rx,
@@ -147,6 +168,11 @@ namespace OmniAppium.EngineUtilityService.Utilities
             TapAt(finalX, finalY,TimeSpan.Zero);
         }
 
+        /// <summary>
+        /// Defines the placeholder operation for a description-based click target.
+        /// </summary>
+        /// <param name="target">The requested target.</param>
+        /// <remarks>This operation is not implemented and performs no click.</remarks>
         [GeminiTool(Description = "在手機畫面的基準解析度根據目標執行點擊。target為被點擊的目標")]
         public void Click(Target target)
         {
@@ -154,6 +180,12 @@ namespace OmniAppium.EngineUtilityService.Utilities
 
         }
 
+        /// <summary>
+        /// Performs an Appium tap at the specified absolute coordinate.
+        /// </summary>
+        /// <param name="x">The absolute X coordinate.</param>
+        /// <param name="y">The absolute Y coordinate.</param>
+        /// <param name="duration">The duration of the pointer move before the tap.</param>
         public void TapAt(
             int x,
             int y,

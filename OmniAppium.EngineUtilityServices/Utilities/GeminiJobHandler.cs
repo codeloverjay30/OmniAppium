@@ -179,7 +179,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
         }
 
         var request =
-            DefaultRequest.Clone();
+            DefaultRequest.DeepClone();
 
         request.SetPrompt(
             gJob.Prompt);

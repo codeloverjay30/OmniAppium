@@ -7,11 +7,13 @@ using AiUtility.AiBaseUtilityServices.Services;
 using AiUtility.Configurations;
 using AiUtility.GeminiKits.Abstractions;
 using AiUtility.GeminiKits.Executor;
+using AiUtility.GeminiKits.Mappers;
 using AiUtility.GeminiKits.Registry;
 using AiUtility.GeminiKits.Services;
 using AiUtility.GeminiUtilityServices.Configs;
 using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
+using AiUtility.ToolKits.Services;
 using CommonModels;
 using CoordinateUtilityServices;
 using EnumUtilityServices;
@@ -89,7 +91,7 @@ IAiConfigService geminiConfigService =
     {
         AiConfigPath = geminiConfigPath,
     };
-    
+
 GeminiApiOptions geminiApiOptions =
     geminiConfigService.ReadData<GeminiApiOptions>();
 
@@ -239,7 +241,7 @@ try
             currentScreenSize.Width,
             currentScreenSize.Height);
 
-    IClickService clickService =
+    ClickService clickService =
         new ClickService(
             loggerFactoryService,
             true)
@@ -248,7 +250,7 @@ try
             Scaler = resolutionScaler
         };
 
-    IWaitService waitService =
+    WaitService waitService =
         new WaitService(
             loggerFactoryService,
             true)
@@ -351,10 +353,28 @@ try
         new GeminiToolRegistry(
             reflectionUtilityService);
 
+    IAiParameterSchemaGenerator parameterSchemaGenerator =
+        new GeminiSchemaGenerator(
+            jsonUtilityService,
+            typeUtilityService);
+
+    IGeminiParameterPropertyMapper parameterPropertyMapper =
+        new GeminiParameterPropertyMapper();
+
+
+    // Register the actual Appium services as Gemini tools.
+    geminiToolRegistry.Register<ClickService>(
+    () => clickService);
+
+    geminiToolRegistry.Register<WaitService>(
+        () => waitService);
+
     var geminiToolConverter =
         new GeminiToolConverter(
             jsonUtilityService,
-            enumUtilityService);
+            enumUtilityService,
+            parameterSchemaGenerator,
+            parameterPropertyMapper);
 
     IGeminiToolService geminiToolService =
         new GeminiToolService(
