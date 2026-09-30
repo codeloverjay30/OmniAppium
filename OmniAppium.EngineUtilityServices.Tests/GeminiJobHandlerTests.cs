@@ -687,4 +687,54 @@ public class GeminiJobHandlerTests
         captured[1].Contents.Should().ContainSingle();
     }
 
+    [Fact]
+    public async Task AutoExecuteAsync_ShouldSendJpegBytesWithMatchingMimeType()
+    {
+        byte[] screenshotBytes = [0xff, 0xd8, 0xff, 0xd9];
+        GeminiGenerateRequest? captured = null;
+        _mockScreenshotService
+            .Setup(service => service.GetBytesOfCachedScreenshotBytes(
+                It.Is<ImageFormat>(format => format.Guid == ImageFormat.Jpeg.Guid)))
+            .Returns(screenshotBytes);
+        _mockSessionManager
+            .Setup(session => session.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()))
+            .Returns((
+                GeminiGenerateRequest request,
+                string userTask,
+                AiExecutionSettings settings,
+                CancellationToken cancellationToken,
+                IProgress<TestProgress> progress) =>
+            {
+                captured = request;
+                return Task.FromResult(new StatusJsonModels
+                {
+                    StatusList = [new StatusJsonModel { IsSuccess = true }]
+                });
+            });
+
+        await _handler.AutoExecuteAsync(new GeminiJob
+        {
+            Prompt = "Inspect the screenshot",
+            UserTask = "Inspect the current screen"
+        });
+
+        _mockScreenshotService.Verify(service => service.TakeScreenshot(), Times.Once);
+        _mockScreenshotService.Verify(
+            service => service.GetBytesOfCachedScreenshotBytes(
+                It.Is<ImageFormat>(format => format.Guid == ImageFormat.Jpeg.Guid)),
+            Times.Once);
+        captured.Should().NotBeNull();
+        GeminiInlineData image = captured!.Contents
+            .SelectMany(message => message.Parts)
+            .Single(part => part.InlineData is not null)
+            .InlineData!;
+        image.MimeType.Should().Be("image/jpeg");
+        image.Data.Should().Be(Convert.ToBase64String(screenshotBytes));
+    }
+
 }

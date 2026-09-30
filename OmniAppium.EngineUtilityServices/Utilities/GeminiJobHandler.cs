@@ -171,7 +171,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
 
         var imageBytes =
             _screenshotService.GetBytesOfCachedScreenshotBytes(
-                ImageFormat.Png);
+                ImageFormat.Jpeg);
 
         if (imageBytes.Length == 0)
         {
@@ -187,7 +187,8 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
 
         request.AddUserMessage(
             request.Prompt,
-            imageBytes);
+            imageBytes,
+            "image/jpeg");
 
         /*
          * Keep tool declarations on the request only when the existing
