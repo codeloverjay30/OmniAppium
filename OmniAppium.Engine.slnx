@@ -4,7 +4,7 @@
 		<File Path="global.json" />
 		<File Path="nuget.config" />
 	</Folder>
-	<Project Path="OCRUtilityServices/OCRUtilityServices.csproj" />
+	<Project Path="OCRUtilityServices.IntegrationTests/OCRUtilityServices.IntegrationTests.csproj" />
 	<Project Path="OmniAppium.AiAgentUtilityServices/OmniAppium.AiAgentUtilityServices.csproj" Id="4c5358da-6f15-4ae6-9de1-35a56eb8b1d3" />
 	<Project Path="OmniAppium.BaseUtilityServices/OmniAppium.BaseUtilityServices.csproj" />
 	<Project Path="OmniAppium.Core/OmniAppium.Core.csproj" />

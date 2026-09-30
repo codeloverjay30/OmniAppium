@@ -83,6 +83,16 @@ public class GeminiJobHandlerTests
             ToolExecutionTimeout = TimeSpan.FromSeconds(30)
         };
 
+        _mockSessionManager
+            .Setup(sessionManager =>
+                sessionManager.ExecuteWithToolSupportAsync<TestProgress>(
+                    It.IsAny<GeminiGenerateRequest>(),
+                    It.IsAny<string>(),
+                    It.IsAny<AiExecutionSettings>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IProgress<TestProgress>>()))
+            .ReturnsAsync(CreateSuccessfulExecutionResult());
+
         _mockRegistry
             .Setup(r => r.GetAllTools())
             .Returns(new List<GeminiToolMetadata>());
@@ -560,7 +570,7 @@ public class GeminiJobHandlerTests
                     await semaphore.WaitAsync(
                         cancellationToken);
 
-                    return new StatusJsonModels();
+                    return CreateSuccessfulExecutionResult();
                 });
 
         var job1 = new GeminiJob
@@ -737,4 +747,46 @@ public class GeminiJobHandlerTests
         image.Data.Should().Be(Convert.ToBase64String(screenshotBytes));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AutoExecuteAsync_ShouldRejectAnyUnsuccessfulWorkflowStatus(bool includeSuccessfulStatus)
+    {
+        List<StatusJsonModel> statuses = [new StatusJsonModel { IsSuccess = false }];
+        if (includeSuccessfulStatus)
+        {
+            statuses.Insert(0, new StatusJsonModel { IsSuccess = true });
+        }
+        _mockSessionManager
+            .Setup(session => session.ExecuteWithToolSupportAsync<TestProgress>(
+                It.IsAny<GeminiGenerateRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<AiExecutionSettings>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IProgress<TestProgress>>()))
+            .ReturnsAsync(new StatusJsonModels { StatusList = statuses });
+
+        Action act = () => _handler.AutoExecuteAsync(new GeminiJob
+        {
+            Prompt = "Execute the workflow",
+            UserTask = "Finish the current task"
+        }).GetAwaiter().GetResult();
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("The Gemini workflow did not complete successfully.");
+    }
+
+    private static StatusJsonModels CreateSuccessfulExecutionResult()
+    {
+        return new StatusJsonModels
+        {
+            StatusList =
+            [
+                new StatusJsonModel
+                {
+                    IsSuccess = true
+                }
+            ]
+        };
+    }
 }

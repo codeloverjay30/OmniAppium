@@ -198,16 +198,25 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
          * its tool service. Do not duplicate the tool registration lifecycle.
          */
 
-        using var cts =
+        using CancellationTokenSource cts =
             new CancellationTokenSource(
                 _aiExecutionSettings.ToolExecutionTimeout);
 
-        await _sessionManager.ExecuteWithToolSupportAsync<TProgress>(
-            request: request,
-            userTask: gJob.UserTask,
-            settings: _aiExecutionSettings,
-            ct: cts.Token,
-            progress: _progressBar);
+        var ct = cts.Token;
+
+        var executionResult =
+            await _sessionManager.ExecuteWithToolSupportAsync<TProgress>(
+                request: request,
+                userTask: gJob.UserTask,
+                settings: _aiExecutionSettings,
+                ct: ct,
+                progress: _progressBar);
+
+        if (!executionResult.IsAllSuccess)
+        {
+            throw new InvalidOperationException(
+                "The Gemini workflow did not complete successfully.");
+        }
     }
 
     /// <summary>
