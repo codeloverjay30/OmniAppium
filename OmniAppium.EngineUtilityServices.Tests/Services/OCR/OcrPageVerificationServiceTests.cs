@@ -7,19 +7,35 @@ using OmniAppium.EngineUtilityServices.Services.OCR;
 
 namespace OmniAppium.EngineUtilityServices.Tests.Services.OCR;
 
-public sealed class OcrPageVerificationServiceTests
+public sealed partial class OcrPageVerificationServiceTests
 {
     private readonly Mock<IAndroidScreenOcrService> _screenOcrService;
     private readonly Mock<IOcrTextMatcher> _ocrTextMatcher;
 
+    private readonly Mock<IAndroidScreenOcrService> _screenOcrServiceMock;
+    private readonly Mock<IOcrTextMatcher> _ocrTextMatcherMock;
+    private readonly OcrPageVerificationService _sut;
+    
     public OcrPageVerificationServiceTests()
     {
+        _screenOcrServiceMock =
+            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+
+        _ocrTextMatcherMock =
+            new Mock<IOcrTextMatcher>(MockBehavior.Strict);
+
+        _sut = new OcrPageVerificationService(
+            _screenOcrServiceMock.Object,
+            _ocrTextMatcherMock.Object,
+            TimeProvider.System);
+
         _screenOcrService = new Mock<IAndroidScreenOcrService>(
             MockBehavior.Strict);
 
         _ocrTextMatcher = new Mock<IOcrTextMatcher>(
             MockBehavior.Strict);
     }
+
 
     [Fact]
     public void WaitForTextAsync_WhenExpectedTextIsFoundImmediately_ShouldComplete()
@@ -557,48 +573,50 @@ public sealed class OcrPageVerificationServiceTests
     }
 
     [Fact]
-public void WaitForAllTextAsync_WhenExpectedTextsIsNull_ShouldThrowArgumentNullException()
-{
-    // Arrange
-    OcrPageVerificationService sut = CreateSut();
+    public void WaitForAllTextAsync_WhenExpectedTextsIsNull_ShouldThrowArgumentNullException()
+    {
+        // Arrange
+        OcrPageVerificationService sut = CreateSut();
 
-    IReadOnlyCollection<string> expectedTexts = null!;
+        IReadOnlyCollection<string> expectedTexts = null!;
 
-    // Act
-    Action act = () =>
-            sut.WaitForAllTextAsync(
-            expectedTexts,
-            TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+        // Act
+        Action act = () =>
+                sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(5),
+                TestContext.Current.CancellationToken).GetAwaiter().GetResult();
 
-    // Assert
-    act.Should()
-        .Throw<ArgumentNullException>()
-        .WithMessage("*expectedTexts*");
-}
+        // Assert
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithMessage("*expectedTexts*");
+    }
 
-[Fact]
-public void WaitForAllTextAsync_WhenExpectedTextsIsEmpty_ShouldThrowArgumentException()
-{
-    // Arrange
-    OcrPageVerificationService sut = CreateSut();
 
-    IReadOnlyCollection<string> expectedTexts =
-        Array.Empty<string>();
+    [Fact]
+    public void WaitForAllTextAsync_WhenExpectedTextsIsEmpty_ShouldThrowArgumentException()
+    {
+        // Arrange
+        OcrPageVerificationService sut = CreateSut();
 
-    // Act
-    Action act = () =>
-            sut.WaitForAllTextAsync(
-            expectedTexts,
-            TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+        IReadOnlyCollection<string> expectedTexts =
+            Array.Empty<string>();
 
-    // Assert
-    act.Should()
-        .Throw<ArgumentException>()
-        .WithMessage(
-            "*At least one OCR page verification text is required.*");
-}
+        // Act
+        Action act = () =>
+                sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(5),
+                TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+
+        // Assert
+        act.Should()
+            .Throw<ArgumentException>()
+            .WithMessage(
+                "*At least one OCR page verification text is required.*");
+    }
+
 
 [Theory]
 [InlineData("")]
@@ -1215,7 +1233,7 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
             Times.AtMostOnce);
     }
 
-
+    
 
     private OcrPageVerificationService CreateSut()
     {
