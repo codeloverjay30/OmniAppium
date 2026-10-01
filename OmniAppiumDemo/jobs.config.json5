@@ -2,7 +2,7 @@
     "Jobs": [
         {
             "Type": "Wait",
-            "Timeout": 2000
+            "Timeout": 30000
         },
         {
             "Type": "Click",
