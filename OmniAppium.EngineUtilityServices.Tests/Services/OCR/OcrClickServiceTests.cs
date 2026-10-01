@@ -1,5 +1,7 @@
 using CoordinateUtilityServices;
 using FluentAssertions;
+using LoggerFactoryUtilityServices;
+using Microsoft.Extensions.Logging;
 using Moq;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
@@ -13,6 +15,10 @@ public sealed class OcrClickServiceTests
     private readonly Mock<IAndroidScreenOcrService> _screenOcrServiceMock;
     private readonly Mock<IOcrTextMatcher> _ocrTextMatcherMock;
     private readonly Mock<IClickService> _clickServiceMock;
+
+    private readonly Mock<ILoggerFactoryBaseUtilityService> _loggerFactoryServiceMock;
+    private readonly Mock<ILogger> _loggerMock;
+
     private readonly OcrClickService _sut;
 
     public OcrClickServiceTests()
@@ -26,10 +32,21 @@ public sealed class OcrClickServiceTests
         _clickServiceMock =
             new Mock<IClickService>(MockBehavior.Strict);
 
+        _loggerFactoryServiceMock =
+            new Mock<ILoggerFactoryBaseUtilityService>(MockBehavior.Strict);
+
+        _loggerMock =
+            new Mock<ILogger>(MockBehavior.Loose);
+
+        _loggerFactoryServiceMock
+            .SetupGet(service => service.Logger)
+            .Returns(_loggerMock.Object);
+
         _sut = new OcrClickService(
             _screenOcrServiceMock.Object,
             _ocrTextMatcherMock.Object,
-            _clickServiceMock.Object);
+            _clickServiceMock.Object,
+            _loggerFactoryServiceMock.Object);
     }
 
     [Fact]
@@ -95,7 +112,8 @@ public sealed class OcrClickServiceTests
         var sut = new OcrClickService(
             screenOcrService.Object,
             ocrTextMatcher.Object,
-            clickService.Object);
+            clickService.Object,
+            _loggerFactoryServiceMock.Object);
 
         // Act
         Action act = () =>
@@ -275,7 +293,8 @@ public sealed class OcrClickServiceTests
         var sut = new OcrClickService(
             screenOcrService.Object,
             ocrTextMatcher.Object,
-            clickService.Object);
+            clickService.Object,
+            _loggerFactoryServiceMock.Object);
 
         // Act
         Action act = () =>
@@ -393,7 +412,8 @@ public sealed class OcrClickServiceTests
         var sut = new OcrClickService(
             screenOcrService.Object,
             ocrTextMatcher.Object,
-            clickService.Object);
+            clickService.Object,
+            _loggerFactoryServiceMock.Object);
 
         // Act
         Action act = () =>
@@ -503,7 +523,8 @@ public sealed class OcrClickServiceTests
         var sut = new OcrClickService(
             screenOcrService.Object,
             ocrTextMatcher.Object,
-            clickService.Object);
+            clickService.Object,
+            _loggerFactoryServiceMock.Object);
 
         // Act
         Action act = () =>
@@ -625,7 +646,8 @@ public sealed class OcrClickServiceTests
         var sut = new OcrClickService(
             screenOcrService.Object,
             ocrTextMatcher.Object,
-            clickService.Object);
+            clickService.Object,
+            _loggerFactoryServiceMock.Object);
 
         // Act
         Action act = () =>
