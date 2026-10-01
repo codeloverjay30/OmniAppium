@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
@@ -9,9 +10,15 @@ namespace OmniAppium.EngineUtilityServices.Services.OCR;
 /// </summary>
 public sealed class AndroidScreenOcrService(
     IScreenshotService screenshotService,
-    IOCRUtilityService ocrUtilityService)
+    IOCRUtilityService ocrUtilityService,
+    IOcrDiagnosticImageWriter? diagnosticImageWriter = null)
     : IAndroidScreenOcrService
 {
+    private readonly IOcrDiagnosticImageWriter _diagnosticImageWriter =
+        diagnosticImageWriter
+        ?? new OcrDiagnosticImageWriter(
+            new FileSystem());
+
     /// <summary>
     /// Captures a fresh screenshot and recognizes text within it.
     /// </summary>
@@ -42,15 +49,16 @@ public sealed class AndroidScreenOcrService(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-    // Temporary diagnostic: save the exact image passed to OCR.
-    string diagnosticPath = Path.Combine(
-        AppContext.BaseDirectory,
-        "ocr-diagnostic.png");
-
-        await File.WriteAllBytesAsync(
-            diagnosticPath,
+        // Preserve the exact image submitted to OCR for diagnostic inspection.
+        string diagnosticPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "ocr-diagnostic.png");
+        
+        await _diagnosticImageWriter.WriteAsync(
             imageBuffer,
-            cancellationToken);
+            diagnosticPath,
+            cancellationToken)
+            .ConfigureAwait(false);
     
         return await ocrUtilityService
             .RecognizeAsync(imageBuffer,"zh-TW", cancellationToken)
