@@ -1,3 +1,5 @@
+using LoggerFactoryUtilityServices;
+using Microsoft.Extensions.Logging;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
 using OmniAppium.EngineUtilityService.Services.Click;
@@ -11,9 +13,11 @@ namespace OmniAppium.EngineUtilityServices.Services.OCR;
 public sealed class OcrClickService(
     IAndroidScreenOcrService screenOcrService,
     IOcrTextMatcher ocrTextMatcher,
-    IClickService clickService)
+    IClickService clickService,
+    ILoggerFactoryBaseUtilityService loggerFactoryService)
     : IOcrClickService
 {
+    private readonly ILogger _logger = loggerFactoryService.Logger;
     private static readonly TimeSpan RetryInterval =
         TimeSpan.FromSeconds(2);
 
@@ -70,11 +74,25 @@ public sealed class OcrClickService(
         double x = targetMatch.Bounds.Center.X;
         double y = targetMatch.Bounds.Center.Y;
 
-
         ValidateCoordinates(
             x,
             y,
             targetText);
+
+        _logger.LogInformation(
+            "OCR click target: {TargetText}. " +
+            "Bounds: TopLeft=({Left}, {Top}), BottomRight=({Right}, {Bottom}), " +
+            "Width={Width}, Height={Height}. " +
+            "CalculatedCenter=({CenterX}, {CenterY})",
+            targetText,
+            targetMatch.Bounds.TopLeft.X,
+            targetMatch.Bounds.TopLeft.Y,
+            targetMatch.Bounds.BottomRight.X,
+            targetMatch.Bounds.BottomRight.Y,
+            targetMatch.Bounds.Width,
+            targetMatch.Bounds.Height,
+            x,
+            y);
 
         clickService.ClickAbsolute(x, y);
     }
