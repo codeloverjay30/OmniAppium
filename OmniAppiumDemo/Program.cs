@@ -1,8 +1,8 @@
 ﻿#define DEVELOPING
 #define IS_LOGGING
-#define AUTO_EXECUTE_TASKS
+// #define AUTO_EXECUTE_TASKS
 
-using AiUtility.AiBaseUtilityServices.Models;
+using System.Drawing;
 using AiUtility.AiBaseUtilityServices.Services;
 using AiUtility.Configurations;
 using AiUtility.GeminiKits.Abstractions;
@@ -21,6 +21,8 @@ using ExpressionTreeUtilityServices;
 using JsonUtilityServices;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
+using OCRUtilityServices.Models;
+using OCRUtilityServices.Services;
 using OmniAppium.ConfigUtilityService.Controllers;
 using OmniAppium.ConfigUtilityService.Factories;
 using OmniAppium.ConfigUtilityService.Models;
@@ -30,6 +32,7 @@ using OmniAppium.EngineUtilityService.Services.Screen;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Services.Wait;
 using OmniAppium.EngineUtilityService.Utilities;
+using OmniAppium.EngineUtilityServices.Services.OCR;
 using OmniAppium.LogServices;
 using ReflectionUtilityServices;
 using ThreadLevelLockingUtilityServices;
@@ -95,7 +98,7 @@ IAiConfigService geminiConfigService =
     {
         AiConfigPath = geminiConfigPath,
     };
-
+    
 GeminiApiOptions geminiApiOptions =
     geminiConfigService.ReadData<GeminiApiOptions>();
 
@@ -104,6 +107,16 @@ var logger =
 
 logger.LogInformation(
     "Starting OmniAppium automation engine.");
+
+// Temporary diagnostic:
+// Verify the OCRUtilityServices assembly loaded by this process.
+Type ocrServiceType =
+    typeof(OCRUtilityServices.Services.OCRUtilityService);
+
+logger.LogInformation(
+    "OCRUtilityServices runtime assembly: {Assembly}; Location: {Location}",
+    ocrServiceType.Assembly.FullName,
+    ocrServiceType.Assembly.Location);
 
 ITransversalService transversalService =
     new DFSTransversalService();
@@ -221,7 +234,7 @@ try
     var referenceScreenSize =
         developmentDeviceConfig.ScreenSize;
 
-    var currentScreenSize =
+    var currentScreenSize1 =
         screenService.GetFreshScreenSize();
 
 #if IS_LOGGING
@@ -233,8 +246,8 @@ try
 
     logger.LogInformation(
         "Current resolution: {Width}x{Height}",
-        currentScreenSize.Width,
-        currentScreenSize.Height);
+        currentScreenSize1.Width,
+        currentScreenSize1.Height);
 
 #endif
 
@@ -242,8 +255,8 @@ try
         new ResolutionScaler(
             referenceScreenSize.Width,
             referenceScreenSize.Height,
-            currentScreenSize.Width,
-            currentScreenSize.Height);
+            currentScreenSize1.Width,
+            currentScreenSize1.Height);
 
     ClickService clickService =
         new ClickService(
@@ -269,6 +282,135 @@ try
         {
             Driver = driver
         };
+
+IOCRUtilityService ocrUtilityService =
+    new OCRUtilityService();
+
+    IOcrTextMatcher ocrTextMatcher =
+        new OcrTextMatcher();
+    
+IAndroidScreenOcrService screenOcrService =
+    new AndroidScreenOcrService(
+        screenshotService,
+        ocrUtilityService);
+
+
+    OcrResult ocrResult =
+    await screenOcrService.RecognizeCurrentScreenAsync();
+
+logger.LogInformation(
+    "OCR recognized text: {Text}",
+    ocrResult.Text);
+
+foreach (OcrTextLine line in ocrResult.Lines)
+{
+    logger.LogInformation(
+        "OCR line: {Text}; " +
+        "TopLeft=({Left}, {Top}); " +
+        "BottomRight=({Right}, {Bottom}); " +
+        "Center=({CenterX}, {CenterY})",
+        line.Text,
+        line.Bounds.TopLeft.X,
+        line.Bounds.TopLeft.Y,
+        line.Bounds.BottomRight.X,
+        line.Bounds.BottomRight.Y,
+        line.Bounds.Center.X,
+        line.Bounds.Center.Y);
+}
+
+const string targetText = "任務";
+// const string targetText = "VIP 9";
+
+    try
+    {
+    
+        IOcrClickService ocrClickService =
+            new OcrClickService(
+                screenOcrService,
+                ocrTextMatcher,
+                clickService);
+
+        IOcrPageVerificationService pageVerificationService =
+            new OcrPageVerificationService(
+                screenOcrService,
+                ocrTextMatcher,
+                TimeProvider.System);
+        
+        const string clickTarget = "任務";
+
+        TimeSpan clickTimeout = TimeSpan.FromSeconds(30);
+        TimeSpan verificationTimeout = TimeSpan.FromSeconds(10);
+
+        string[] expectedPageMarkers =
+        [
+            "日常",
+            "週常",
+            "成就"
+        ];
+
+        try
+        {
+            await ocrClickService.ClickTextAsync(
+                clickTarget,
+                clickTimeout);
+
+            logger.LogInformation(
+                "OCR target clicked successfully. ClickTarget: {ClickTarget}",
+                clickTarget);
+
+            logger.LogInformation(
+                "Waiting for OCR page verification. ExpectedPageMarkers: {ExpectedPageMarkers}, Timeout: {Timeout}",
+                string.Join(", ", expectedPageMarkers),
+                verificationTimeout);
+
+            await pageVerificationService.WaitForAllTextAsync(
+                expectedPageMarkers,
+                verificationTimeout);
+
+            logger.LogInformation(
+                "OCR page verification succeeded. ExpectedPageMarkers: {ExpectedPageMarkers}",
+                string.Join(", ", expectedPageMarkers));
+        }
+        catch (TimeoutException ex)
+        {
+            logger.LogError(
+                ex,
+                "OCR page verification timed out. ClickTarget: {ClickTarget}, ExpectedPageMarkers: {ExpectedPageMarkers}",
+                clickTarget,
+                string.Join(", ", expectedPageMarkers));
+
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "OCR navigation was canceled. ClickTarget: {ClickTarget}, ExpectedPageMarkers: {ExpectedPageMarkers}",
+                clickTarget,
+                string.Join(", ", expectedPageMarkers));
+
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "OCR navigation failed. ClickTarget: {ClickTarget}, ExpectedPageMarkers: {ExpectedPageMarkers}",
+                clickTarget,
+                string.Join(", ", expectedPageMarkers));
+
+            throw;
+        }
+    
+    
+}
+catch (InvalidOperationException ex)
+{
+    logger.LogWarning(
+        ex,
+        "OCR target '{TargetText}' was not uniquely found.",
+        targetText);
+}
 
 #if AUTO_EXECUTE_TASKS
 
@@ -364,7 +506,7 @@ try
 
     IGeminiParameterPropertyMapper parameterPropertyMapper =
         new GeminiParameterPropertyMapper();
-
+    
 
     // Register the actual Appium services as Gemini tools.
     geminiToolRegistry.Register<ClickService>(
@@ -372,7 +514,7 @@ try
 
     geminiToolRegistry.Register<WaitService>(
         () => waitService);
-
+    
     var geminiToolConverter =
         new GeminiToolConverter(
             jsonUtilityService,
@@ -382,9 +524,9 @@ try
 
     IGeminiToolService geminiToolService =
         new GeminiToolService(
-            geminiToolRegistry ,
-            geminiToolConverter ,
-            loggerFactoryService ,
+            geminiToolRegistry,
+            geminiToolConverter,
+            loggerFactoryService,
             true);
 
     IAiConfigService aiConfigService =
@@ -486,8 +628,6 @@ try
      * handlers.Add(geminiJobHandler);
      */
 
-#endif
-
 IProgress<WorkflowProgress> workflowProgress =
     new Progress<WorkflowProgress>(
         progress =>
@@ -552,6 +692,9 @@ logger.LogInformation(
     "Configured automation sequence completed.");
 
 #endif
+
+#endif
+
 }
 catch (Exception ex)
 {
