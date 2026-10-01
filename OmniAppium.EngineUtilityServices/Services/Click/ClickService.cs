@@ -170,16 +170,34 @@ namespace OmniAppium.EngineUtilityService.Services.Click
         }
 
         /// <summary>
-        /// Defines the placeholder operation for a description-based click target.
+        /// Clicks the target resolved from the Gemini tool request.
         /// </summary>
-        /// <param name="target">The requested target.</param>
-        /// <remarks>This operation is not implemented and performs no click.</remarks>
-        [GeminiTool(Description = "在手機畫面的基準解析度根據目標執行點擊。target為被點擊的目標")]
+        /// <param name="target">The target requested by Gemini.</param>
+        /// <exception cref="ArgumentNullException">Thrown when the target is null.</exception>
+        /// <remarks>
+        /// At present, it is a temporary diagnostic implementation.
+        /// </remarks>
+        [GeminiTool(
+            Description = "在手機畫面的基準解析度根據目標執行點擊。target為被點擊的目標")]
         public void Click(Target target)
         {
-            // TODO:
+            ArgumentNullException.ThrowIfNull(target);
 
+            _logger.LogInformation(
+                "DIAGNOSTIC: Click(Target) entered. Description={Description}",
+                target.Description);
+
+            // Temporary diagnostic implementation.
+            // Use a known safe coordinate through the existing click path.
+            Click(
+                rx: 540,
+                ry: 960,
+                usePreloadScreenSize: true);
+
+            _logger.LogInformation(
+                "DIAGNOSTIC: Click(Target) completed.");
         }
+
 
         /// <summary>
         /// Performs an Appium tap at the specified absolute coordinate.
