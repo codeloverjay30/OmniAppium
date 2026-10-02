@@ -107,4 +107,118 @@ public sealed class AndroidScreenOcrServiceTests
 
         act.Should().Throw<InvalidOperationException>().WithMessage("OCR recognition failed.");
     }
+
+    [Fact]
+    public async Task RecognizeCurrentScreenAsync_WhenCalledMultipleTimes_ShouldUseUniqueDiagnosticPaths()
+    {
+        // Arrange
+        byte[] firstImageBuffer = [1, 2, 3];
+        byte[] secondImageBuffer = [4, 5, 6];
+
+        OcrResult firstResult = new(
+            Text: "first",
+            Lines: Array.Empty<OcrTextLine>());
+
+        OcrResult secondResult = new(
+            Text: "second",
+            Lines: Array.Empty<OcrTextLine>());
+
+        var screenshotServiceMock =
+            new Mock<IScreenshotService>(MockBehavior.Strict);
+
+        var ocrUtilityServiceMock =
+            new Mock<IOCRUtilityService>(MockBehavior.Strict);
+
+        var diagnosticImageWriterMock =
+            new Mock<IOcrDiagnosticImageWriter>(MockBehavior.Strict);
+
+        screenshotServiceMock
+            .Setup(service => service.TakeScreenshot());
+
+        screenshotServiceMock
+            .SetupSequence(service =>
+                service.GetBytesOfCachedScreenshotBytes())
+            .Returns(firstImageBuffer)
+            .Returns(secondImageBuffer);
+
+        List<string> diagnosticPaths = [];
+
+        diagnosticImageWriterMock
+            .Setup(writer =>
+                writer.WriteAsync(
+                    It.IsAny<ReadOnlyMemory<byte>>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()))
+            .Callback<
+                ReadOnlyMemory<byte>,
+                string?,
+                CancellationToken>(
+                (_, path, _) =>
+                {
+                    path.Should().NotBeNullOrWhiteSpace();
+                    diagnosticPaths.Add(path!);
+                })
+            .Returns(Task.CompletedTask);
+
+        ocrUtilityServiceMock
+            .Setup(service =>
+                service.RecognizeAsync(
+                    firstImageBuffer,
+                    "zh-TW",
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(firstResult);
+
+        ocrUtilityServiceMock
+            .Setup(service =>
+                service.RecognizeAsync(
+                    secondImageBuffer,
+                    "zh-TW",
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(secondResult);
+
+        var sut = new AndroidScreenOcrService(
+            screenshotServiceMock.Object,
+            ocrUtilityServiceMock.Object,
+            diagnosticImageWriterMock.Object);
+
+        // Act
+        Func<Task> act = async () =>
+        {
+            await sut.RecognizeCurrentScreenAsync();
+            await sut.RecognizeCurrentScreenAsync();
+        };
+
+        // Assert
+        await act.Should().NotThrowAsync();
+
+        diagnosticPaths.Should().HaveCount(2);
+        diagnosticPaths.Should().OnlyHaveUniqueItems();
+
+        diagnosticPaths.Should().AllSatisfy(
+            path =>
+                Path.GetExtension(path)
+                    .Should()
+                    .Be(".png"));
+
+        screenshotServiceMock.Verify(
+            service => service.TakeScreenshot(),
+            Times.Exactly(2));
+
+        diagnosticImageWriterMock.Verify(
+            writer =>
+                writer.WriteAsync(
+                    It.IsAny<ReadOnlyMemory<byte>>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+
+        ocrUtilityServiceMock.Verify(
+            service =>
+                service.RecognizeAsync(
+                    It.IsAny<byte[]>(),
+                    "zh-TW",
+                    It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
+
 }

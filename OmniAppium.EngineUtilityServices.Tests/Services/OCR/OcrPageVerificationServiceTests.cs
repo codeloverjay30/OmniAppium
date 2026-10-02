@@ -1,4 +1,6 @@
 using FluentAssertions;
+using LoggerFactoryUtilityServices;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 using OCRUtilityServices.Models;
@@ -24,10 +26,21 @@ public sealed partial class OcrPageVerificationServiceTests
         _ocrTextMatcherMock =
             new Mock<IOcrTextMatcher>(MockBehavior.Strict);
 
+                Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
         _sut = new OcrPageVerificationService(
             _screenOcrServiceMock.Object,
             _ocrTextMatcherMock.Object,
-            TimeProvider.System);
+            TimeProvider.System,
+            loggerFactoryService.Object);
 
         _screenOcrService = new Mock<IAndroidScreenOcrService>(
             MockBehavior.Strict);
@@ -132,11 +145,22 @@ public sealed partial class OcrPageVerificationServiceTests
                     OcrTextMatchMode.NormalizedContains))
             .Returns(matchedLine);
 
+                Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
         OcrPageVerificationService sut =
             new(
                 screenOcrService.Object,
                 ocrTextMatcher.Object,
-                TimeProvider.System
+                TimeProvider.System,
+                loggerFactoryService.Object
             );
 
         // Act
@@ -208,11 +232,22 @@ public sealed partial class OcrPageVerificationServiceTests
                 new InvalidOperationException(
                     $"OCR target '{expectedText}' was not found."));
 
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
         OcrPageVerificationService sut =
             new(
                 screenOcrService.Object,
                 ocrTextMatcher.Object,
-                TimeProvider.System
+                TimeProvider.System,
+                loggerFactoryService.Object
             );
 
         // Act
@@ -533,11 +568,22 @@ public sealed partial class OcrPageVerificationServiceTests
                 .Returns(CreateTextLine(expectedText));
         }
 
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
         OcrPageVerificationService sut =
             new(
                 screenOcrService.Object,
                 ocrTextMatcher.Object,
-                TimeProvider.System
+                TimeProvider.System,
+                loggerFactoryService.Object
             );
 
         // Act
@@ -618,213 +664,239 @@ public sealed partial class OcrPageVerificationServiceTests
     }
 
 
-[Theory]
-[InlineData("")]
-[InlineData(" ")]
-[InlineData("   ")]
-public void WaitForAllTextAsync_WhenExpectedTextsContainsInvalidText_ShouldThrowArgumentException(
-    string invalidText)
-{
-    // Arrange
-    OcrPageVerificationService sut = CreateSut();
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("   ")]
+    public void WaitForAllTextAsync_WhenExpectedTextsContainsInvalidText_ShouldThrowArgumentException(
+        string invalidText)
+    {
+        // Arrange
+        OcrPageVerificationService sut = CreateSut();
 
-    IReadOnlyCollection<string> expectedTexts =
-    [
-        "日常",
+        IReadOnlyCollection<string> expectedTexts =
+        [
+            "日常",
         invalidText,
         "成就"
-    ];
+        ];
 
-    // Act
-    Action act = () =>
-            sut.WaitForAllTextAsync(
-            expectedTexts,
-            TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+        // Act
+        Action act = () =>
+                sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(5),
+                TestContext.Current.CancellationToken).GetAwaiter().GetResult();
 
-    // Assert
-    act.Should()
-        .Throw<ArgumentException>()
-        .WithMessage(
-            "*The value cannot be an empty string or composed entirely of whitespace.*");
-}
+        // Assert
+        act.Should()
+            .Throw<ArgumentException>()
+            .WithMessage(
+                "*The value cannot be an empty string or composed entirely of whitespace.*");
+    }
 
-[Fact]
-public void WaitForAllTextAsync_WhenTimeoutIsNotPositive_ShouldThrowArgumentOutOfRangeException()
-{
-    // Arrange
-    OcrPageVerificationService sut = CreateSut();
 
-    IReadOnlyCollection<string> expectedTexts =
-    [
-        "日常",
+    [Fact]
+    public void WaitForAllTextAsync_WhenTimeoutIsNotPositive_ShouldThrowArgumentOutOfRangeException()
+    {
+        // Arrange
+        OcrPageVerificationService sut = CreateSut();
+
+        IReadOnlyCollection<string> expectedTexts =
+        [
+            "日常",
         "週常",
         "成就"
-    ];
+        ];
 
-    // Act
-    Action act = () =>
-            sut.WaitForAllTextAsync(
-            expectedTexts,
-            TimeSpan.Zero,
-            TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+        // Act
+        Action act = () =>
+                sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.Zero,
+                TestContext.Current.CancellationToken).GetAwaiter().GetResult();
 
-    // Assert
-    act.Should()
-        .Throw<ArgumentOutOfRangeException>()
-        .WithMessage(
-            "*OCR page verification timeout must be greater than zero.*");
-}
+        // Assert
+        act.Should()
+            .Throw<ArgumentOutOfRangeException>()
+            .WithMessage(
+                "*OCR page verification timeout must be greater than zero.*");
+    }
 
-[Fact]
-public void WaitForAllTextAsync_WhenMatcherReportsAmbiguousText_ShouldPropagateException()
-{
-    // Arrange
-    const string ambiguousText = "週常";
 
-    IReadOnlyCollection<string> expectedTexts =
-    [
-        "日常",
+    [Fact]
+    public void WaitForAllTextAsync_WhenMatcherReportsAmbiguousText_ShouldPropagateException()
+    {
+        // Arrange
+        const string ambiguousText = "週常";
+
+        IReadOnlyCollection<string> expectedTexts =
+        [
+            "日常",
         ambiguousText,
         "成就"
-    ];
+        ];
 
-    OcrResult result =
-        CreateOcrResult(
+        OcrResult result =
+            CreateOcrResult(
+                "日常",
+                "週常",
+                "成就");
+
+        Mock<IAndroidScreenOcrService> screenOcrService =
+            new(MockBehavior.Strict);
+
+        Mock<IOcrTextMatcher> ocrTextMatcher =
+            new(MockBehavior.Strict);
+
+        screenOcrService
+            .Setup(service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    result,
+                    "日常",
+                    OcrTextMatchMode.NormalizedContains))
+            .Returns(CreateTextLine("日常"));
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    result,
+                    ambiguousText,
+                    OcrTextMatchMode.NormalizedContains))
+            .Throws(
+                new InvalidOperationException(
+                    $"OCR target '{ambiguousText}' is ambiguous: multiple matching lines were found."));
+
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
+        OcrPageVerificationService sut =
+            new(
+                screenOcrService.Object,
+                ocrTextMatcher.Object,
+                TimeProvider.System,
+                loggerFactoryService.Object
+            );
+
+        // Act
+        Action act = () =>
+                sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(5),
+                TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+
+        // Assert
+        act.Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage(
+                $"OCR target '{ambiguousText}' is ambiguous: multiple matching lines were found.");
+
+        screenOcrService.Verify(
+            service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        ocrTextMatcher.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    result,
+                    "日常",
+                    OcrTextMatchMode.NormalizedContains),
+            Times.Once);
+
+        ocrTextMatcher.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    result,
+                    ambiguousText,
+                    OcrTextMatchMode.NormalizedContains),
+            Times.Once);
+
+        ocrTextMatcher.VerifyNoOtherCalls();
+    }
+
+
+    [Fact]
+    public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructureException()
+    {
+        // Arrange
+        IReadOnlyCollection<string> expectedTexts =
+        [
             "日常",
-            "週常",
-            "成就");
-
-    Mock<IAndroidScreenOcrService> screenOcrService =
-        new(MockBehavior.Strict);
-
-    Mock<IOcrTextMatcher> ocrTextMatcher =
-        new(MockBehavior.Strict);
-
-    screenOcrService
-        .Setup(service =>
-            service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()))
-        .ReturnsAsync(result);
-
-    ocrTextMatcher
-        .Setup(matcher =>
-            matcher.FindUnique(
-                result,
-                "日常",
-                OcrTextMatchMode.NormalizedContains))
-        .Returns(CreateTextLine("日常"));
-
-    ocrTextMatcher
-        .Setup(matcher =>
-            matcher.FindUnique(
-                result,
-                ambiguousText,
-                OcrTextMatchMode.NormalizedContains))
-        .Throws(
-            new InvalidOperationException(
-                $"OCR target '{ambiguousText}' is ambiguous: multiple matching lines were found."));
-
-    OcrPageVerificationService sut =
-        new(
-            screenOcrService.Object,
-            ocrTextMatcher.Object,
-            TimeProvider.System
-        );
-
-    // Act
-    Action act = () =>
-            sut.WaitForAllTextAsync(
-            expectedTexts,
-            TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken).GetAwaiter().GetResult();
-
-    // Assert
-    act.Should()
-        .Throw<InvalidOperationException>()
-        .WithMessage(
-            $"OCR target '{ambiguousText}' is ambiguous: multiple matching lines were found.");
-
-    screenOcrService.Verify(
-        service =>
-            service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()),
-        Times.Once);
-
-    ocrTextMatcher.Verify(
-        matcher =>
-            matcher.FindUnique(
-                result,
-                "日常",
-                OcrTextMatchMode.NormalizedContains),
-        Times.Once);
-
-    ocrTextMatcher.Verify(
-        matcher =>
-            matcher.FindUnique(
-                result,
-                ambiguousText,
-                OcrTextMatchMode.NormalizedContains),
-        Times.Once);
-
-    ocrTextMatcher.VerifyNoOtherCalls();
-}
-
-[Fact]
-public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructureException()
-{
-    // Arrange
-    IReadOnlyCollection<string> expectedTexts =
-    [
-        "日常",
         "週常",
         "成就"
-    ];
+        ];
 
-    const string exceptionMessage =
-        "Android screenshot capture failed.";
+        const string exceptionMessage =
+            "Android screenshot capture failed.";
 
-    Mock<IAndroidScreenOcrService> screenOcrService =
-        new(MockBehavior.Strict);
+        Mock<IAndroidScreenOcrService> screenOcrService =
+            new(MockBehavior.Strict);
 
-    Mock<IOcrTextMatcher> ocrTextMatcher =
-        new(MockBehavior.Strict);
+        Mock<IOcrTextMatcher> ocrTextMatcher =
+            new(MockBehavior.Strict);
 
-    screenOcrService
-        .Setup(service =>
-            service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()))
-        .ThrowsAsync(
-            new InvalidOperationException(
-                exceptionMessage));
+        screenOcrService
+            .Setup(service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()))
+            .ThrowsAsync(
+                new InvalidOperationException(
+                    exceptionMessage));
 
-    OcrPageVerificationService sut =
-        new(
-            screenOcrService.Object,
-            ocrTextMatcher.Object,
-            TimeProvider.System
-        );
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
 
-    // Act
-    Action act = () =>
-            sut.WaitForAllTextAsync(
-            expectedTexts,
-            TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
 
-    // Assert
-    act.Should()
-        .Throw<InvalidOperationException>()
-        .WithMessage(exceptionMessage);
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
 
-    screenOcrService.Verify(
-        service =>
-            service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()),
-        Times.Once);
+        OcrPageVerificationService sut =
+            new(
+                screenOcrService.Object,
+                ocrTextMatcher.Object,
+                TimeProvider.System,
+                loggerFactoryService.Object
+            );
 
-    ocrTextMatcher.VerifyNoOtherCalls();
-}
+        // Act
+        Action act = () =>
+                sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(5),
+                TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+
+        // Assert
+        act.Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage(exceptionMessage);
+
+        screenOcrService.Verify(
+            service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        ocrTextMatcher.VerifyNoOtherCalls();
+    }
+
 
     [Fact]
     public void WaitForAllTextAsync_WhenCallerCancels_ShouldPropagateOperationCanceledException()
@@ -848,11 +920,21 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
 
         cancellationSource.Cancel();
 
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
         OcrPageVerificationService sut =
             new(
                 screenOcrService.Object,
                 ocrTextMatcher.Object,
-                TimeProvider.System
+                TimeProvider.System,
+                loggerFactoryService.Object
             );
 
         // Act
@@ -949,11 +1031,22 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
                 .Returns(CreateTextLine(expectedText));
         }
 
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
         OcrPageVerificationService sut =
             new(
                 screenOcrService.Object,
                 ocrTextMatcher.Object,
-                fakeTimeProvider);
+                fakeTimeProvider,
+                loggerFactoryService.Object);
 
         // Act
         Task verificationTask =
@@ -1067,11 +1160,22 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
                 new InvalidOperationException(
                     "OCR target '成就' was not found."));
 
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
         OcrPageVerificationService sut =
             new(
                 screenOcrService.Object,
                 ocrTextMatcher.Object,
-                fakeTimeProvider);
+                fakeTimeProvider,
+                loggerFactoryService.Object);
 
         // Act
         Task verificationTask =
@@ -1101,8 +1205,8 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
         string[] expectedTexts =
         [
             "日常",
-            "週常",
-            "成就"
+        "週常",
+        "成就"
         ];
 
         TimeSpan timeout =
@@ -1143,6 +1247,10 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
                     : secondResult;
             });
 
+        // First snapshot:
+        // 日常 = found
+        // 週常 = found
+        // 成就 = missing
         ocrTextMatcher
             .Setup(matcher =>
                 matcher.FindUnique(
@@ -1169,6 +1277,10 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
                 new InvalidOperationException(
                     "OCR target '成就' was not found."));
 
+        // Second snapshot:
+        // 日常 = missing
+        // 週常 = missing
+        // 成就 = found
         ocrTextMatcher
             .Setup(matcher =>
                 matcher.FindUnique(
@@ -1179,11 +1291,40 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
                 new InvalidOperationException(
                     "OCR target '日常' was not found."));
 
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    secondResult,
+                    "週常",
+                    OcrTextMatchMode.NormalizedContains))
+            .Throws(
+                new InvalidOperationException(
+                    "OCR target '週常' was not found."));
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    secondResult,
+                    "成就",
+                    OcrTextMatchMode.NormalizedContains))
+            .Returns(CreateTextLine("成就"));
+
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
         OcrPageVerificationService sut =
             new(
                 screenOcrService.Object,
                 ocrTextMatcher.Object,
-                fakeTimeProvider);
+                fakeTimeProvider,
+                loggerFactoryService.Object);
 
         // Act
         Task verificationTask =
@@ -1216,6 +1357,28 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
                 1,
                 "page verification must inspect at least one OCR snapshot");
 
+        screenOcrService.Verify(
+            service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()),
+            Times.Exactly(recognitionCount));
+
+        ocrTextMatcher.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    firstResult,
+                    "日常",
+                    OcrTextMatchMode.NormalizedContains),
+            Times.AtLeastOnce);
+
+        ocrTextMatcher.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    firstResult,
+                    "週常",
+                    OcrTextMatchMode.NormalizedContains),
+            Times.AtLeastOnce);
+
         ocrTextMatcher.Verify(
             matcher =>
                 matcher.FindUnique(
@@ -1231,18 +1394,578 @@ public void WaitForAllTextAsync_WhenScreenOcrFails_ShouldPropagateInfrastructure
                     "日常",
                     OcrTextMatchMode.NormalizedContains),
             Times.AtMostOnce);
+
+        ocrTextMatcher.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    secondResult,
+                    "週常",
+                    OcrTextMatchMode.NormalizedContains),
+            Times.AtMostOnce);
+
+        ocrTextMatcher.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    secondResult,
+                    "成就",
+                    OcrTextMatchMode.NormalizedContains),
+            Times.AtMostOnce);
+
+        screenOcrService.VerifyNoOtherCalls();
+        ocrTextMatcher.VerifyNoOtherCalls();
     }
 
-    
+
+
+    [Fact]
+    public async Task WaitForAllTextAsync_WhenMarkerIsMissing_ShouldEvaluateAllExpectedMarkers()
+    {
+        // Arrange
+        string[] expectedTexts =
+        [
+            "日常",
+            "週常",
+            "成就"
+        ];
+
+        OcrResult ocrResult = new(
+            Text: "日常 成就",
+            Lines: Array.Empty<OcrTextLine>());
+
+        var screenOcrServiceMock =
+            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+
+        var ocrTextMatcherMock =
+            new Mock<IOcrTextMatcher>(MockBehavior.Strict);
+
+        screenOcrServiceMock
+            .Setup(service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ocrResult);
+
+        ocrTextMatcherMock
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    ocrResult,
+                    "日常",
+                    OcrTextMatchMode.NormalizedContains))
+            .Returns(CreateTextLine("日常"));
+
+        ocrTextMatcherMock
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    ocrResult,
+                    "週常",
+                    OcrTextMatchMode.NormalizedContains))
+            .Throws(
+                new InvalidOperationException(
+                    "OCR target '週常' was not found."));
+
+        ocrTextMatcherMock
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    ocrResult,
+                    "成就",
+                    OcrTextMatchMode.NormalizedContains))
+            .Returns(CreateTextLine("成就"));
+
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
+        var sut = new OcrPageVerificationService(
+            screenOcrServiceMock.Object,
+            ocrTextMatcherMock.Object,
+            TimeProvider.System,
+            loggerFactoryService.Object);
+
+        using var cancellationSource =
+            new CancellationTokenSource();
+
+        ocrTextMatcherMock
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    ocrResult,
+                    "成就",
+                    OcrTextMatchMode.NormalizedContains))
+            .Callback(() => cancellationSource.Cancel())
+            .Returns(CreateTextLine("成就"));
+
+        // Act
+        Func<Task> act = () =>
+            sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(30),
+                cancellationSource.Token);
+
+        // Assert
+        await act.Should()
+            .ThrowAsync<OperationCanceledException>()
+            .WithMessage("*canceled*");
+
+        ocrTextMatcherMock.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    ocrResult,
+                    "日常",
+                    OcrTextMatchMode.NormalizedContains),
+            Times.Once);
+
+        ocrTextMatcherMock.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    ocrResult,
+                    "週常",
+                    OcrTextMatchMode.NormalizedContains),
+            Times.Once);
+
+        ocrTextMatcherMock.Verify(
+            matcher =>
+                matcher.FindUnique(
+                    ocrResult,
+                    "成就",
+                    OcrTextMatchMode.NormalizedContains),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task WaitForAllTextAsync_WhenAttemptHasMissingMarker_ShouldLogMatchedAndMissingMarkers()
+    {
+        // Arrange
+        string[] expectedTexts =
+        [
+            "日常",
+        "週常",
+        "成就"
+        ];
+
+        OcrResult result =
+            CreateOcrResult(
+                "日常",
+                "成就");
+
+        Mock<IAndroidScreenOcrService> screenOcrService =
+            new(MockBehavior.Strict);
+
+        Mock<IOcrTextMatcher> ocrTextMatcher =
+            new(MockBehavior.Strict);
+
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
+        screenOcrService
+            .Setup(service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    result,
+                    "日常",
+                    OcrTextMatchMode.NormalizedContains))
+            .Returns(CreateTextLine("日常"));
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    result,
+                    "週常",
+                    OcrTextMatchMode.NormalizedContains))
+            .Throws(
+                new InvalidOperationException(
+                    "OCR target '週常' was not found."));
+
+        using var cancellationSource =
+            new CancellationTokenSource();
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    result,
+                    "成就",
+                    OcrTextMatchMode.NormalizedContains))
+            .Callback(() => cancellationSource.Cancel())
+            .Returns(CreateTextLine("成就"));
+
+        OcrPageVerificationService sut =
+            new(
+                screenOcrService.Object,
+                ocrTextMatcher.Object,
+                TimeProvider.System,
+                loggerFactoryService.Object);
+
+        // Act
+        Func<Task> act = () =>
+            sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(30),
+                cancellationSource.Token);
+
+        // Assert
+        await act.Should()
+            .ThrowAsync<OperationCanceledException>()
+            .WithMessage("*canceled*");
+
+        logger.Verify(
+            log => log.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>(
+                    (state, _) =>
+                        state.ToString() != null &&
+                        state.ToString()!.Contains(
+                            "Expected=[日常, 週常, 成就]",
+                            StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(
+                            "Matched=[日常, 成就]",
+                            StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(
+                            "Missing=[週常]",
+                            StringComparison.Ordinal)),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
 
     private OcrPageVerificationService CreateSut()
     {
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
         return new OcrPageVerificationService(
             _screenOcrService.Object,
             _ocrTextMatcher.Object,
-            TimeProvider.System
+            TimeProvider.System,
+            loggerFactoryService.Object
         );
     }
+
+    [Fact]
+    public async Task WaitForAllTextAsync_WhenAllMarkersAreFound_ShouldLogAllMarkersAsMatched()
+    {
+        // Arrange
+        string[] expectedTexts =
+        [
+            "日常",
+        "週常",
+        "成就"
+        ];
+
+        OcrResult result =
+            CreateOcrResult(
+                "日常",
+                "週常",
+                "成就");
+
+        Mock<IAndroidScreenOcrService> screenOcrService =
+            new(MockBehavior.Strict);
+
+        Mock<IOcrTextMatcher> ocrTextMatcher =
+            new(MockBehavior.Strict);
+
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
+        screenOcrService
+            .Setup(service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+        foreach (string expectedText in expectedTexts)
+        {
+            ocrTextMatcher
+                .Setup(matcher =>
+                    matcher.FindUnique(
+                        result,
+                        expectedText,
+                        OcrTextMatchMode.NormalizedContains))
+                .Returns(
+                    (OcrResult _, string targetText, OcrTextMatchMode _) =>
+                        CreateTextLine(targetText));
+        }
+
+        OcrPageVerificationService sut =
+            new(
+                screenOcrService.Object,
+                ocrTextMatcher.Object,
+                TimeProvider.System,
+                loggerFactoryService.Object);
+
+        // Act
+        Func<Task> act = () =>
+            sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(5),
+                TestContext.Current.CancellationToken);
+
+        // Assert
+        await act.Should()
+            .NotThrowAsync();
+
+        logger.Verify(
+            log => log.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>(
+                    (state, _) =>
+                        state.ToString() != null &&
+                        state.ToString()!.Contains(
+                            "Expected=[日常, 週常, 成就]",
+                            StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(
+                            "Matched=[日常, 週常, 成就]",
+                            StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(
+                            "Missing=[]",
+                            StringComparison.Ordinal)),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+
+        screenOcrService.Verify(
+            service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        foreach (string expectedText in expectedTexts)
+        {
+            ocrTextMatcher.Verify(
+                matcher =>
+                    matcher.FindUnique(
+                        result,
+                        expectedText,
+                        OcrTextMatchMode.NormalizedContains),
+                Times.Once);
+        }
+
+        screenOcrService.VerifyNoOtherCalls();
+        ocrTextMatcher.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task WaitForAllTextAsync_WhenMultipleAttemptsOccur_ShouldLogDiagnosticsForEachAttempt()
+    {
+        // Arrange
+        string[] expectedTexts =
+        [
+            "日常",
+        "週常",
+        "成就"
+        ];
+
+        var fakeTimeProvider =
+            new FakeTimeProvider();
+
+        OcrResult firstResult =
+            CreateOcrResult("日常");
+
+        OcrResult secondResult =
+            CreateOcrResult(
+                "日常",
+                "週常",
+                "成就");
+
+        Mock<IAndroidScreenOcrService> screenOcrService =
+            new(MockBehavior.Strict);
+
+        Mock<IOcrTextMatcher> ocrTextMatcher =
+            new(MockBehavior.Strict);
+
+        Mock<ILoggerFactoryBaseUtilityService> loggerFactoryService =
+            new(MockBehavior.Strict);
+
+        Mock<ILogger> logger =
+            new(MockBehavior.Loose);
+
+        loggerFactoryService
+            .SetupGet(service => service.Logger)
+            .Returns(logger.Object);
+
+        screenOcrService
+            .SetupSequence(service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(firstResult)
+            .ReturnsAsync(secondResult);
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    firstResult,
+                    "日常",
+                    OcrTextMatchMode.NormalizedContains))
+            .Returns(CreateTextLine("日常"));
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    firstResult,
+                    "週常",
+                    OcrTextMatchMode.NormalizedContains))
+            .Throws(
+                new InvalidOperationException(
+                    "OCR target '週常' was not found."));
+
+        ocrTextMatcher
+            .Setup(matcher =>
+                matcher.FindUnique(
+                    firstResult,
+                    "成就",
+                    OcrTextMatchMode.NormalizedContains))
+            .Throws(
+                new InvalidOperationException(
+                    "OCR target '成就' was not found."));
+
+        foreach (string expectedText in expectedTexts)
+        {
+            ocrTextMatcher
+                .Setup(matcher =>
+                    matcher.FindUnique(
+                        secondResult,
+                        expectedText,
+                        OcrTextMatchMode.NormalizedContains))
+                .Returns(
+                    (OcrResult _, string targetText, OcrTextMatchMode _) =>
+                        CreateTextLine(targetText));
+        }
+
+        OcrPageVerificationService sut =
+            new(
+                screenOcrService.Object,
+                ocrTextMatcher.Object,
+                fakeTimeProvider,
+                loggerFactoryService.Object);
+
+        // Act
+        Task verificationTask =
+            sut.WaitForAllTextAsync(
+                expectedTexts,
+                TimeSpan.FromSeconds(10),
+                TestContext.Current.CancellationToken);
+
+        await Task.Yield();
+
+        verificationTask.IsCompleted
+            .Should()
+            .BeFalse(
+                "the first OCR attempt is missing required markers");
+
+        fakeTimeProvider.Advance(
+            TimeSpan.FromSeconds(2));
+
+        Func<Task> act = () => verificationTask;
+
+        // Assert
+        await act.Should()
+            .NotThrowAsync();
+
+        logger.Verify(
+            log => log.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>(
+                    (state, _) =>
+                        state.ToString() != null &&
+                        state.ToString()!.Contains(
+                            "Expected=[日常, 週常, 成就]",
+                            StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(
+                            "Matched=[日常]",
+                            StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(
+                            "Missing=[週常, 成就]",
+                            StringComparison.Ordinal)),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+
+        logger.Verify(
+            log => log.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>(
+                    (state, _) =>
+                        state.ToString() != null &&
+                        state.ToString()!.Contains(
+                            "Expected=[日常, 週常, 成就]",
+                            StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(
+                            "Matched=[日常, 週常, 成就]",
+                            StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(
+                            "Missing=[]",
+                            StringComparison.Ordinal)),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+
+        screenOcrService.Verify(
+            service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+
+        foreach (string expectedText in expectedTexts)
+        {
+            ocrTextMatcher.Verify(
+                matcher =>
+                    matcher.FindUnique(
+                        firstResult,
+                        expectedText,
+                        OcrTextMatchMode.NormalizedContains),
+                Times.Once);
+
+            ocrTextMatcher.Verify(
+                matcher =>
+                    matcher.FindUnique(
+                        secondResult,
+                        expectedText,
+                        OcrTextMatchMode.NormalizedContains),
+                Times.Once);
+        }
+
+        loggerFactoryService.VerifyGet(
+            service => service.Logger,
+            Times.Exactly(2));
+
+        screenOcrService.VerifyNoOtherCalls();
+        ocrTextMatcher.VerifyNoOtherCalls();
+        loggerFactoryService.VerifyNoOtherCalls();
+    }
+
 
     private static OcrResult CreateOcrResult(
         params string[] texts)
