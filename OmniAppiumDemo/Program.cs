@@ -313,7 +313,8 @@ IOcrPageVerificationService ocrPageVerificationService =
     new OcrPageVerificationService(
         androidScreenOcrService,
         ocrTextMatcher,
-        TimeProvider.System);
+        TimeProvider.System,
+        loggerFactoryService);
 
     IGameWorkflowStepExecutor gameWorkflowStepExecutor =
         new GameWorkflowStepExecutor(
