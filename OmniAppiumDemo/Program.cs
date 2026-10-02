@@ -3,6 +3,7 @@
 // #define AUTO_EXECUTE_TASKS
 
 using System.Drawing;
+using System.IO.Abstractions;
 using AiUtility.AiBaseUtilityServices.Services;
 using AiUtility.Configurations;
 using AiUtility.GeminiKits.Abstractions;
@@ -33,6 +34,7 @@ using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Services.Wait;
 using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.EngineUtilityServices.Services.OCR;
+using OmniAppium.EngineUtilityServices.Workflows;
 using OmniAppium.LogServices;
 using ReflectionUtilityServices;
 using ThreadLevelLockingUtilityServices;
@@ -283,11 +285,40 @@ try
             Driver = driver
         };
 
+IFileSystem fileSystem = new FileSystem();
+
 IOCRUtilityService ocrUtilityService =
     new OCRUtilityService();
 
-    IOcrTextMatcher ocrTextMatcher =
-        new OcrTextMatcher();
+IOcrTextMatcher ocrTextMatcher =
+    new OcrTextMatcher();
+
+IOcrDiagnosticImageWriter ocrDiagnosticImageWriter =
+    new OcrDiagnosticImageWriter(fileSystem);
+
+IAndroidScreenOcrService androidScreenOcrService =
+    new AndroidScreenOcrService(
+        screenshotService,
+        ocrUtilityService,
+        ocrDiagnosticImageWriter);
+
+IOcrClickService ocrClickService =
+    new OcrClickService(
+        androidScreenOcrService,
+        ocrTextMatcher,
+        clickService,
+        loggerFactoryService);
+
+IOcrPageVerificationService ocrPageVerificationService =
+    new OcrPageVerificationService(
+        androidScreenOcrService,
+        ocrTextMatcher,
+        TimeProvider.System);
+
+    IGameWorkflowStepExecutor gameWorkflowStepExecutor =
+        new GameWorkflowStepExecutor(
+            ocrClickService,
+            ocrPageVerificationService);
     
 IAndroidScreenOcrService screenOcrService =
     new AndroidScreenOcrService(
@@ -295,7 +326,7 @@ IAndroidScreenOcrService screenOcrService =
         ocrUtilityService);
 
 
-    OcrResult ocrResult =
+OcrResult ocrResult =
     await screenOcrService.RecognizeCurrentScreenAsync();
 
 logger.LogInformation(
@@ -318,99 +349,31 @@ foreach (OcrTextLine line in ocrResult.Lines)
         line.Bounds.Center.Y);
 }
 
-const string targetText = "任務";
-// const string targetText = "VIP 9";
-
-    try
-    {
-    
-        IOcrClickService ocrClickService =
-            new OcrClickService(
-                screenOcrService,
-                ocrTextMatcher,
-                clickService);
-
-        IOcrPageVerificationService pageVerificationService =
-            new OcrPageVerificationService(
-                screenOcrService,
-                ocrTextMatcher,
-                TimeProvider.System);
-        
-        const string clickTarget = "任務";
-
-        TimeSpan clickTimeout = TimeSpan.FromSeconds(30);
-        TimeSpan verificationTimeout = TimeSpan.FromSeconds(10);
-
-        string[] expectedPageMarkers =
+    GameWorkflowStep taskWorkflowStep = new(
+        ClickText: "任務",
+        VerificationTexts:
         [
             "日常",
             "週常",
             "成就"
-        ];
-
-        try
-        {
-            await ocrClickService.ClickTextAsync(
-                clickTarget,
-                clickTimeout);
-
-            logger.LogInformation(
-                "OCR target clicked successfully. ClickTarget: {ClickTarget}",
-                clickTarget);
-
-            logger.LogInformation(
-                "Waiting for OCR page verification. ExpectedPageMarkers: {ExpectedPageMarkers}, Timeout: {Timeout}",
-                string.Join(", ", expectedPageMarkers),
-                verificationTimeout);
-
-            await pageVerificationService.WaitForAllTextAsync(
-                expectedPageMarkers,
-                verificationTimeout);
-
-            logger.LogInformation(
-                "OCR page verification succeeded. ExpectedPageMarkers: {ExpectedPageMarkers}",
-                string.Join(", ", expectedPageMarkers));
-        }
-        catch (TimeoutException ex)
-        {
-            logger.LogError(
-                ex,
-                "OCR page verification timed out. ClickTarget: {ClickTarget}, ExpectedPageMarkers: {ExpectedPageMarkers}",
-                clickTarget,
-                string.Join(", ", expectedPageMarkers));
-
-            throw;
-        }
-        catch (OperationCanceledException ex)
-        {
-            logger.LogWarning(
-                ex,
-                "OCR navigation was canceled. ClickTarget: {ClickTarget}, ExpectedPageMarkers: {ExpectedPageMarkers}",
-                clickTarget,
-                string.Join(", ", expectedPageMarkers));
-
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "OCR navigation failed. ClickTarget: {ClickTarget}, ExpectedPageMarkers: {ExpectedPageMarkers}",
-                clickTarget,
-                string.Join(", ", expectedPageMarkers));
-
-            throw;
-        }
+        ],
+        ClickTimeout: TimeSpan.FromSeconds(30),
+        VerificationTimeout: TimeSpan.FromSeconds(10));
     
-    
-}
-catch (InvalidOperationException ex)
-{
-    logger.LogWarning(
-        ex,
-        "OCR target '{TargetText}' was not uniquely found.",
-        targetText);
-}
+#if IS_LOGGING
+loggerFactoryService.Logger.LogInformation(
+    "Executing OCR workflow: Click {ClickText} and verify [{VerificationTexts}]",
+    taskWorkflowStep.ClickText,
+    string.Join(", ", taskWorkflowStep.VerificationTexts));
+#endif
+
+await gameWorkflowStepExecutor.ExecuteAsync(
+    taskWorkflowStep);
+
+#if IS_LOGGING
+loggerFactoryService.Logger.LogInformation(
+    "OCR workflow completed successfully.");
+#endif
 
 #if AUTO_EXECUTE_TASKS
 
