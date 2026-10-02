@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.IO.Abstractions;
+using System.Threading;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
@@ -6,7 +8,8 @@ using OmniAppium.EngineUtilityService.Services.Screenshots;
 namespace OmniAppium.EngineUtilityServices.Services.OCR;
 
 /// <summary>
-/// Coordinates Android screenshot capture and optical character recognition.
+/// Coordinates Android screenshot capture, diagnostic image persistence,
+/// and optical character recognition.
 /// </summary>
 public sealed class AndroidScreenOcrService(
     IScreenshotService screenshotService,
@@ -16,21 +19,20 @@ public sealed class AndroidScreenOcrService(
 {
     private readonly IOcrDiagnosticImageWriter _diagnosticImageWriter =
         diagnosticImageWriter
-        ?? new OcrDiagnosticImageWriter(
-            new FileSystem());
+        ?? new OcrDiagnosticImageWriter(new FileSystem());
+
+    private long _diagnosticSequence;
 
     /// <summary>
-    /// Captures a fresh screenshot and recognizes text within it.
+    /// Captures the current Android screen, persists a diagnostic copy,
+    /// and performs optical character recognition.
     /// </summary>
     /// <param name="cancellationToken">
-    /// A token used to cancel the recognition workflow.
+    /// A token used to cancel the operation.
     /// </param>
     /// <returns>
-    /// Text and text-line bounds in the captured screenshot's pixel coordinates.
+    /// The OCR result produced from the captured Android screen.
     /// </returns>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when screenshot capture returns no image data.
-    /// </exception>
     public async Task<OcrResult> RecognizeCurrentScreenAsync(
         CancellationToken cancellationToken = default)
     {
@@ -49,19 +51,29 @@ public sealed class AndroidScreenOcrService(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Preserve the exact image submitted to OCR for diagnostic inspection.
+        long diagnosticSequence =
+            Interlocked.Increment(ref _diagnosticSequence);
+
+        string diagnosticFileName = string.Create(
+            CultureInfo.InvariantCulture,
+            $"ocr-diagnostic-{diagnosticSequence:D6}.png");
+
         string diagnosticPath = Path.Combine(
             AppContext.BaseDirectory,
-            "ocr-diagnostic.png");
-        
-        await _diagnosticImageWriter.WriteAsync(
-            imageBuffer,
-            diagnosticPath,
-            cancellationToken)
+            diagnosticFileName);
+
+        await _diagnosticImageWriter
+            .WriteAsync(
+                imageBuffer,
+                diagnosticPath,
+                cancellationToken)
             .ConfigureAwait(false);
-    
+
         return await ocrUtilityService
-            .RecognizeAsync(imageBuffer,"zh-TW", cancellationToken)
+            .RecognizeAsync(
+                imageBuffer,
+                "zh-TW",
+                cancellationToken)
             .ConfigureAwait(false);
     }
 }
