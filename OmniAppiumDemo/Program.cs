@@ -1,4 +1,4 @@
-﻿#define DEVELOPING
+#define DEVELOPING
 #define IS_LOGGING
 // #define AUTO_EXECUTE_TASKS
 
@@ -300,7 +300,9 @@ IAndroidScreenOcrService androidScreenOcrService =
     new AndroidScreenOcrService(
         screenshotService,
         ocrUtilityService,
-        ocrDiagnosticImageWriter);
+        loggerFactoryService,
+        ocrDiagnosticImageWriter
+    );
 
 IOcrClickService ocrClickService =
     new OcrClickService(
@@ -324,7 +326,8 @@ IOcrPageVerificationService ocrPageVerificationService =
 IAndroidScreenOcrService screenOcrService =
     new AndroidScreenOcrService(
         screenshotService,
-        ocrUtilityService);
+        ocrUtilityService,
+        loggerFactoryService);
 
 
 OcrResult ocrResult =
@@ -350,7 +353,7 @@ foreach (OcrTextLine line in ocrResult.Lines)
         line.Bounds.Center.Y);
 }
 
-    GameWorkflowStep taskWorkflowStep = new(
+GameWorkflowStep taskWorkflowStep = new(
         ClickText: "任務",
         VerificationTexts:
         [
@@ -370,6 +373,35 @@ loggerFactoryService.Logger.LogInformation(
 
 await gameWorkflowStepExecutor.ExecuteAsync(
     taskWorkflowStep);
+
+#if IS_LOGGING
+loggerFactoryService.Logger.LogInformation(
+    "OCR workflow completed successfully.");
+#endif
+
+GameWorkflowStep weeklykWorkflowStep = new(
+        ClickText: "週常",
+        VerificationTexts:
+        [
+            "日常",
+            "週常",
+            "成就",
+            "使用25次快速掛機",
+            "演武大會獲勝40次",
+            //"進階任意武將2次", //不穩定的marker，Windows OCR會將圖片上的這個文字辨識成`進 阝 皆 亻 壬 意 武 將 2 次`
+        ],
+        ClickTimeout: TimeSpan.FromSeconds(30),
+        VerificationTimeout: TimeSpan.FromSeconds(10));
+    
+#if IS_LOGGING
+loggerFactoryService.Logger.LogInformation(
+    "Executing OCR workflow: Click {ClickText} and verify [{VerificationTexts}]",
+    weeklykWorkflowStep.ClickText,
+    string.Join(", ", weeklykWorkflowStep.VerificationTexts));
+#endif
+
+await gameWorkflowStepExecutor.ExecuteAsync(
+    weeklykWorkflowStep);
 
 #if IS_LOGGING
 loggerFactoryService.Logger.LogInformation(

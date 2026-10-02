@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.IO.Abstractions;
 using System.Threading;
+using LoggerFactoryUtilityServices;
+using Microsoft.Extensions.Logging;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
@@ -14,9 +16,11 @@ namespace OmniAppium.EngineUtilityServices.Services.OCR;
 public sealed class AndroidScreenOcrService(
     IScreenshotService screenshotService,
     IOCRUtilityService ocrUtilityService,
+    ILoggerFactoryBaseUtilityService loggerFactoryBaseUtilityService,
     IOcrDiagnosticImageWriter? diagnosticImageWriter = null)
     : IAndroidScreenOcrService
 {
+    private ILogger _logger => loggerFactoryBaseUtilityService.Logger;
     private readonly IOcrDiagnosticImageWriter _diagnosticImageWriter =
         diagnosticImageWriter
         ?? new OcrDiagnosticImageWriter(new FileSystem());
@@ -61,6 +65,11 @@ public sealed class AndroidScreenOcrService(
         string diagnosticPath = Path.Combine(
             AppContext.BaseDirectory,
             diagnosticFileName);
+
+        _logger.LogInformation(
+            "OCR diagnostic image #{DiagnosticSequence}: {DiagnosticPath}",
+            diagnosticSequence,
+            diagnosticPath);
 
         await _diagnosticImageWriter
             .WriteAsync(
