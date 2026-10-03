@@ -1,4 +1,6 @@
 using FluentAssertions;
+using LoggerFactoryUtilityServices;
+using Microsoft.Extensions.Logging;
 using Moq;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
@@ -12,7 +14,22 @@ public sealed class AndroidScreenOcrServiceTests
 {
     private readonly Mock<IScreenshotService> _screenshots = new(MockBehavior.Strict);
     private readonly Mock<IOCRUtilityService> _ocr = new(MockBehavior.Strict);
+    private readonly Mock<IOcrDiagnosticImageWriter> _diagnosticImageWriter = new(MockBehavior.Strict);
+    private readonly Mock<ILoggerFactoryBaseUtilityService> _loggerFactoryServiceMock;
+    private readonly Mock<ILogger> _loggerMock;
 
+    public AndroidScreenOcrServiceTests()
+    {
+                _loggerFactoryServiceMock =
+            new Mock<ILoggerFactoryBaseUtilityService>(MockBehavior.Strict);
+
+        _loggerMock =
+            new Mock<ILogger>(MockBehavior.Loose);
+
+        _loggerFactoryServiceMock
+            .SetupGet(service => service.Logger)
+            .Returns(_loggerMock.Object);
+    }
     [Fact]
     public async Task RecognizeCurrentScreenAsync_CapturesFreshBytesAndForwardsLanguageAndCancellation()
     {
@@ -26,7 +43,19 @@ public sealed class AndroidScreenOcrServiceTests
         _ocr.InSequence(sequence)
             .Setup(service => service.RecognizeAsync(bytes, "zh-TW", cancellation.Token))
             .ReturnsAsync(expected);
-        var sut = new AndroidScreenOcrService(_screenshots.Object, _ocr.Object);
+        _diagnosticImageWriter
+            .Setup(writer =>
+                writer.WriteAsync(
+                    It.IsAny<ReadOnlyMemory<byte>>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var sut = new AndroidScreenOcrService(
+            _screenshots.Object,
+            _ocr.Object,
+            _loggerFactoryServiceMock.Object,
+            _diagnosticImageWriter.Object
+        );
 
         var actual = await sut.RecognizeCurrentScreenAsync(cancellation.Token);
 
@@ -40,7 +69,12 @@ public sealed class AndroidScreenOcrServiceTests
     {
         _screenshots.Setup(service => service.TakeScreenshot());
         _screenshots.Setup(service => service.GetBytesOfCachedScreenshotBytes(null)).Returns([]);
-        var sut = new AndroidScreenOcrService(_screenshots.Object, _ocr.Object);
+                var sut = new AndroidScreenOcrService(
+            _screenshots.Object,
+            _ocr.Object,
+            _loggerFactoryServiceMock.Object,
+            _diagnosticImageWriter.Object
+        );
 
         Action act = () => sut.RecognizeCurrentScreenAsync().GetAwaiter().GetResult();
 
@@ -54,8 +88,12 @@ public sealed class AndroidScreenOcrServiceTests
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        var sut = new AndroidScreenOcrService(_screenshots.Object, _ocr.Object);
-
+        var sut = new AndroidScreenOcrService(
+            _screenshots.Object,
+            _ocr.Object,
+            _loggerFactoryServiceMock.Object,
+            _diagnosticImageWriter.Object
+        );
         Action act = () => sut.RecognizeCurrentScreenAsync(cancellation.Token).GetAwaiter().GetResult();
 
         act.Should().Throw<OperationCanceledException>()
@@ -70,8 +108,12 @@ public sealed class AndroidScreenOcrServiceTests
         using var cancellation = new CancellationTokenSource();
         _screenshots.Setup(service => service.TakeScreenshot()).Callback(cancellation.Cancel);
         _screenshots.Setup(service => service.GetBytesOfCachedScreenshotBytes(null)).Returns([1]);
-        var sut = new AndroidScreenOcrService(_screenshots.Object, _ocr.Object);
-
+        var sut = new AndroidScreenOcrService(
+            _screenshots.Object,
+            _ocr.Object,
+            _loggerFactoryServiceMock.Object,
+            _diagnosticImageWriter.Object
+        );
         Action act = () => sut.RecognizeCurrentScreenAsync(cancellation.Token).GetAwaiter().GetResult();
 
         act.Should().Throw<OperationCanceledException>()
@@ -85,8 +127,12 @@ public sealed class AndroidScreenOcrServiceTests
     {
         _screenshots.Setup(service => service.TakeScreenshot())
             .Throws(new InvalidOperationException("Screenshot capture failed."));
-        var sut = new AndroidScreenOcrService(_screenshots.Object, _ocr.Object);
-
+        var sut = new AndroidScreenOcrService(
+            _screenshots.Object,
+            _ocr.Object,
+            _loggerFactoryServiceMock.Object,
+            _diagnosticImageWriter.Object
+        );
         Action act = () => sut.RecognizeCurrentScreenAsync().GetAwaiter().GetResult();
 
         act.Should().Throw<InvalidOperationException>().WithMessage("Screenshot capture failed.");
@@ -101,8 +147,20 @@ public sealed class AndroidScreenOcrServiceTests
         _screenshots.Setup(service => service.GetBytesOfCachedScreenshotBytes(null)).Returns(bytes);
         _ocr.Setup(service => service.RecognizeAsync(bytes, "zh-TW", CancellationToken.None))
             .ThrowsAsync(new InvalidOperationException("OCR recognition failed."));
-        var sut = new AndroidScreenOcrService(_screenshots.Object, _ocr.Object);
 
+        _diagnosticImageWriter
+            .Setup(writer =>
+                writer.WriteAsync(
+                    It.IsAny<ReadOnlyMemory<byte>>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var sut = new AndroidScreenOcrService(
+            _screenshots.Object,
+            _ocr.Object,
+            _loggerFactoryServiceMock.Object,
+            _diagnosticImageWriter.Object
+        );
         Action act = () => sut.RecognizeCurrentScreenAsync().GetAwaiter().GetResult();
 
         act.Should().Throw<InvalidOperationException>().WithMessage("OCR recognition failed.");
@@ -179,6 +237,7 @@ public sealed class AndroidScreenOcrServiceTests
         var sut = new AndroidScreenOcrService(
             screenshotServiceMock.Object,
             ocrUtilityServiceMock.Object,
+            _loggerFactoryServiceMock.Object,
             diagnosticImageWriterMock.Object);
 
         // Act
