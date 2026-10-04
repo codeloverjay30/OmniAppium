@@ -11,123 +11,115 @@ public sealed class OcrGroundedClickServiceFreshnessTests
     [Fact]
     public void Click_WhenSnapshotIsCurrent_ShouldClickTargetCenter()
     {
-        // Arrange
-        var clickService = new Mock<IClickService>(MockBehavior.Strict);
-        var freshnessGuard = new Mock<IOcrGroundedSnapshotFreshnessGuard>(
-            MockBehavior.Strict);
+        Mock<IClickService> clickService =
+            new(MockBehavior.Strict);
 
-        var snapshot = CreateSnapshot(
-            snapshotId: "snapshot-42",
-            targetId: "ocr-0",
-            x: 100,
-            y: 200,
-            width: 40,
-            height: 20);
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            new(MockBehavior.Strict);
+
+        Mock<IOcrGroundedActionLease> lease =
+            new(MockBehavior.Strict);
+
+        OcrGroundedSnapshot snapshot =
+            new(
+                "snapshot-42",
+                [
+                    new OcrGroundedTarget(
+                    "ocr-0",
+                    "Target",
+                    Rectangle.FromXYWH(
+                        10,
+                        20,
+                        20,
+                        20))
+                ]);
 
         freshnessGuard
-            .Setup(x => x.ThrowIfStale(snapshot));
+            .Setup(guard => guard.AcquireCurrent(snapshot))
+            .Returns(lease.Object);
 
         clickService
-            .Setup(x => x.ClickAbsolute(120, 210));
+            .Setup(service => service.ClickAbsolute(20, 30));
 
-        var sut = new OcrGroundedClickService(
-            clickService.Object,
-            freshnessGuard.Object);
+        lease
+            .Setup(currentLease => currentLease.Dispose());
 
-        // Act
-        Action act = () => sut.Click(snapshot, "ocr-0");
+        OcrGroundedClickService sut =
+            new(
+                clickService.Object,
+                freshnessGuard.Object);
 
-        // Assert
+        Action act = () =>
+            sut.Click(snapshot, "ocr-0");
+
         act.Should().NotThrow();
 
         freshnessGuard.Verify(
-            x => x.ThrowIfStale(snapshot),
+            guard => guard.AcquireCurrent(snapshot),
             Times.Once);
 
         clickService.Verify(
-            x => x.ClickAbsolute(120, 210),
+            service => service.ClickAbsolute(20, 30),
+            Times.Once);
+
+        lease.Verify(
+            currentLease => currentLease.Dispose(),
             Times.Once);
     }
+
 
     [Fact]
     public void Click_WhenSnapshotIsStale_ShouldRejectActionBeforeClicking()
     {
-        // Arrange
-        var clickService = new Mock<IClickService>(MockBehavior.Strict);
-        var freshnessGuard = new Mock<IOcrGroundedSnapshotFreshnessGuard>(
-            MockBehavior.Strict);
+        Mock<IClickService> clickService =
+            new(MockBehavior.Strict);
 
-        var snapshot = CreateSnapshot(
-            snapshotId: "snapshot-41",
-            targetId: "ocr-0",
-            x: 100,
-            y: 200,
-            width: 40,
-            height: 20);
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            new(MockBehavior.Strict);
+
+        OcrGroundedSnapshot snapshot =
+            new(
+                "snapshot-41",
+                [
+                    new OcrGroundedTarget(
+                    "ocr-0",
+                    "Target",
+                    Rectangle.FromXYWH(
+                        10,
+                        20,
+                        20,
+                        20))
+                ]);
 
         freshnessGuard
-            .Setup(x => x.ThrowIfStale(snapshot))
+            .Setup(guard => guard.AcquireCurrent(snapshot))
             .Throws(
                 new StaleOcrGroundedSnapshotException(
                     "snapshot-41",
-                    "snapshot-42"
-                )
-            );
+                    "snapshot-42"));
 
-        var sut = new OcrGroundedClickService(
-            clickService.Object,
-            freshnessGuard.Object);
+        OcrGroundedClickService sut =
+            new(
+                clickService.Object,
+                freshnessGuard.Object);
 
-        // Act
-        Action act = () => sut.Click(snapshot, "ocr-0");
+        Action act = () =>
+            sut.Click(snapshot, "ocr-0");
 
-        // Assert
         act.Should()
             .Throw<StaleOcrGroundedSnapshotException>()
-            .WithMessage("*snapshot-41*stale*");
+            .WithMessage(
+                "*snapshot-41*stale*snapshot-42*");
+
+        freshnessGuard.Verify(
+            guard => guard.AcquireCurrent(snapshot),
+            Times.Once);
 
         clickService.Verify(
-            x => x.ClickAbsolute(
+            service => service.ClickAbsolute(
                 It.IsAny<double>(),
                 It.IsAny<double>()),
             Times.Never);
-    }
-
-
-    [Fact]
-    public void Click_WhenSnapshotIsStale_ShouldRejectBeforeResolvingTarget()
-    {
-        // Arrange
-        var clickService = new Mock<IClickService>(MockBehavior.Strict);
-        var freshnessGuard = new Mock<IOcrGroundedSnapshotFreshnessGuard>(
-            MockBehavior.Strict);
-
-        var snapshot = new OcrGroundedSnapshot(
-            "snapshot-41",
-            []);
-
-        freshnessGuard
-            .Setup(x => x.ThrowIfStale(snapshot))
-            .Throws(
-                new StaleOcrGroundedSnapshotException(
-                    "snapshot-41",
-                    "snapshot-42"
-                )
-            );
-
-        var sut = new OcrGroundedClickService(
-            clickService.Object,
-            freshnessGuard.Object);
-
-        // Act
-        Action act = () => sut.Click(snapshot, "ocr-does-not-exist");
-
-        // Assert
-        act.Should()
-            .Throw<StaleOcrGroundedSnapshotException>()
-            .WithMessage("*snapshot-41*stale*");
-
-        clickService.VerifyNoOtherCalls();
     }
 
     private static OcrGroundedSnapshot CreateSnapshot(
