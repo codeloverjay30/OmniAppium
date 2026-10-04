@@ -11,382 +11,465 @@ public sealed class OcrGroundedClickServiceTests
     [Fact]
     public void Constructor_WhenClickServiceIsNull_ShouldThrowArgumentNullException()
     {
-        // Act
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            new(MockBehavior.Strict);
+
         Action act = () =>
             _ = new OcrGroundedClickService(
-                null!);
+                null!,
+                freshnessGuard.Object);
 
-        // Assert
         act.Should()
             .Throw<ArgumentNullException>()
             .WithMessage("*clickService*");
     }
 
     [Fact]
-    public void Click_WhenSnapshotIsNull_ShouldThrowArgumentNullException()
+    public void Constructor_WhenFreshnessGuardIsNull_ShouldThrowArgumentNullException()
     {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
+        Mock<IClickService> clickService =
             new(MockBehavior.Strict);
 
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
+        Action act = () =>
+            _ = new OcrGroundedClickService(
+                clickService.Object,
+                null!);
 
-        // Act
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithMessage("*freshnessGuard*");
+    }
+
+    [Fact]
+    public void Click_WhenSnapshotIsNull_ShouldThrowArgumentNullException()
+    {
+        Mock<IClickService> clickService =
+            new(MockBehavior.Strict);
+
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            new(MockBehavior.Strict);
+
+        OcrGroundedClickService sut =
+            new(
+                clickService.Object,
+                freshnessGuard.Object);
+
         Action act = () =>
             sut.Click(
                 null!,
                 "ocr-0");
 
-        // Assert
         act.Should()
             .Throw<ArgumentNullException>()
             .WithMessage("*snapshot*");
 
-        clickServiceMock.VerifyNoOtherCalls();
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(
+                    It.IsAny<OcrGroundedSnapshot>()),
+            Times.Never);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
     }
 
-    [Fact]
-    public void Click_WhenTargetIdIsNull_ShouldThrowArgumentNullException()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("   ")]
+    public void Click_WhenTargetIdIsNullOrWhiteSpace_ShouldThrowArgumentException(
+        string? targetId)
     {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "snapshot-1",
+                CreateTarget(
+                    "ocr-0",
+                    100,
+                    200,
+                    40,
+                    20));
+
+        Mock<IClickService> clickService =
             new(MockBehavior.Strict);
 
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            new(MockBehavior.Strict);
 
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot();
+        OcrGroundedClickService sut =
+            new(
+                clickService.Object,
+                freshnessGuard.Object);
 
-        // Act
         Action act = () =>
             sut.Click(
                 snapshot,
-                null!);
+                targetId!);
 
-        // Assert
-        act.Should()
-            .Throw<ArgumentNullException>()
-            .WithMessage("*targetId*");
-
-        clickServiceMock.VerifyNoOtherCalls();
-    }
-
-    [Fact]
-    public void Click_WhenTargetIdIsEmpty_ShouldThrowArgumentException()
-    {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
-            new(MockBehavior.Strict);
-
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
-
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot();
-
-        // Act
-        Action act = () =>
-            sut.Click(
-                snapshot,
-                string.Empty);
-
-        // Assert
         act.Should()
             .Throw<ArgumentException>()
             .WithMessage("*targetId*");
 
-        clickServiceMock.VerifyNoOtherCalls();
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(
+                    It.IsAny<OcrGroundedSnapshot>()),
+            Times.Never);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenTargetIdIsWhiteSpace_ShouldThrowArgumentException()
+    public void Click_WhenTargetsCollectionIsNull_ShouldThrowArgumentException()
     {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
-            new(MockBehavior.Strict);
-
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
-
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot();
-
-        // Act
-        Action act = () =>
-            sut.Click(
-                snapshot,
-                "   ");
-
-        // Assert
-        act.Should()
-            .Throw<ArgumentException>()
-            .WithMessage("*targetId*");
-
-        clickServiceMock.VerifyNoOtherCalls();
-    }
-
-    [Fact]
-    public void Click_WhenTargetsAreNull_ShouldThrowArgumentException()
-    {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
-            new(MockBehavior.Strict);
-
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
-
         OcrGroundedSnapshot snapshot =
             new(
-                "screen-42",
+                "snapshot-1",
                 null!);
 
-        // Act
+        Mock<IClickService> clickService =
+            new(MockBehavior.Strict);
+
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            CreatePermissiveFreshnessGuard(snapshot);
+
+        OcrGroundedClickService sut =
+            new(
+                clickService.Object,
+                freshnessGuard.Object);
+
         Action act = () =>
             sut.Click(
                 snapshot,
                 "ocr-0");
 
-        // Assert
         act.Should()
             .Throw<ArgumentException>()
-            .WithMessage(
-                "*OCR-grounded snapshot must contain a non-null target collection*");
+            .WithMessage("*non-null target collection*");
 
-        clickServiceMock.VerifyNoOtherCalls();
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(snapshot),
+            Times.Once);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
     }
 
     [Fact]
     public void Click_WhenTargetDoesNotExist_ShouldThrowInvalidOperationException()
     {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "snapshot-1",
+                CreateTarget(
+                    "ocr-0",
+                    100,
+                    200,
+                    40,
+                    20));
+
+        Mock<IClickService> clickService =
             new(MockBehavior.Strict);
 
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            CreatePermissiveFreshnessGuard(snapshot);
 
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot();
+        OcrGroundedClickService sut =
+            new(
+                clickService.Object,
+                freshnessGuard.Object);
 
-        // Act
         Action act = () =>
             sut.Click(
                 snapshot,
-                "missing-target");
+                "ocr-999");
 
-        // Assert
         act.Should()
             .Throw<InvalidOperationException>()
-            .WithMessage(
-                "*missing-target*was not found*");
+            .WithMessage("*ocr-999*not found*");
 
-        clickServiceMock.VerifyNoOtherCalls();
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(snapshot),
+            Times.Once);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenTargetIdIsDuplicated_ShouldThrowInvalidOperationException()
+    public void Click_WhenTargetIdDiffersOnlyByCase_ShouldThrowInvalidOperationException()
     {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "snapshot-1",
+                CreateTarget(
+                    "ocr-0",
+                    100,
+                    200,
+                    40,
+                    20));
+
+        Mock<IClickService> clickService =
             new(MockBehavior.Strict);
 
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            CreatePermissiveFreshnessGuard(snapshot);
 
-        OcrGroundedSnapshot snapshot =
+        OcrGroundedClickService sut =
             new(
-                "screen-42",
-                [
-                    new OcrGroundedTarget(
-                        "ocr-0",
-                        "前往",
-                        Rectangle.FromXYWH(
-                            100,
-                            200,
-                            120,
-                            40)),
+                clickService.Object,
+                freshnessGuard.Object);
 
-                    new OcrGroundedTarget(
-                        "ocr-0",
-                        "前往",
-                        Rectangle.FromXYWH(
-                            100,
-                            400,
-                            120,
-                            40))
-                ]);
+        Action act = () =>
+            sut.Click(
+                snapshot,
+                "OCR-0");
 
-        // Act
+        act.Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage("*OCR-0*not found*");
+
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(snapshot),
+            Times.Once);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void Click_WhenTargetIdIsAmbiguous_ShouldThrowInvalidOperationException()
+    {
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "snapshot-1",
+                CreateTarget(
+                    "ocr-0",
+                    100,
+                    200,
+                    40,
+                    20),
+                CreateTarget(
+                    "ocr-0",
+                    300,
+                    400,
+                    40,
+                    20));
+
+        Mock<IClickService> clickService =
+            new(MockBehavior.Strict);
+
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            CreatePermissiveFreshnessGuard(snapshot);
+
+        OcrGroundedClickService sut =
+            new(
+                clickService.Object,
+                freshnessGuard.Object);
+
         Action act = () =>
             sut.Click(
                 snapshot,
                 "ocr-0");
 
-        // Assert
         act.Should()
             .Throw<InvalidOperationException>()
-            .WithMessage(
-                "*ocr-0*ambiguous*");
+            .WithMessage("*ocr-0*ambiguous*");
 
-        clickServiceMock.VerifyNoOtherCalls();
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(snapshot),
+            Times.Once);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenTargetBoundsHaveZeroWidth_ShouldThrowInvalidOperationException()
+    public void Click_WhenTargetWidthIsZero_ShouldThrowInvalidOperationException()
     {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "snapshot-1",
+                CreateTarget(
+                    "ocr-0",
+                    100,
+                    200,
+                    0,
+                    20));
+
+        Mock<IClickService> clickService =
             new(MockBehavior.Strict);
 
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            CreatePermissiveFreshnessGuard(snapshot);
 
-        OcrGroundedSnapshot snapshot =
+        OcrGroundedClickService sut =
             new(
-                "screen-42",
-                [
-                    new OcrGroundedTarget(
-                        "ocr-0",
-                        "前往",
-                        Rectangle.FromXYWH(
-                            100,
-                            200,
-                            0,
-                            40))
-                ]);
+                clickService.Object,
+                freshnessGuard.Object);
 
-        // Act
         Action act = () =>
             sut.Click(
                 snapshot,
                 "ocr-0");
 
-        // Assert
         act.Should()
             .Throw<InvalidOperationException>()
-            .WithMessage(
-                "*ocr-0*zero-area bounds*");
+            .WithMessage("*ocr-0*zero-area bounds*");
 
-        clickServiceMock.VerifyNoOtherCalls();
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(snapshot),
+            Times.Once);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenTargetBoundsHaveZeroHeight_ShouldThrowInvalidOperationException()
+    public void Click_WhenTargetHeightIsZero_ShouldThrowInvalidOperationException()
     {
-        // Arrange
-        Mock<IClickService> clickServiceMock =
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "snapshot-1",
+                CreateTarget(
+                    "ocr-0",
+                    100,
+                    200,
+                    40,
+                    0));
+
+        Mock<IClickService> clickService =
             new(MockBehavior.Strict);
 
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            CreatePermissiveFreshnessGuard(snapshot);
 
-        OcrGroundedSnapshot snapshot =
+        OcrGroundedClickService sut =
             new(
-                "screen-42",
-                [
-                    new OcrGroundedTarget(
-                        "ocr-0",
-                        "前往",
-                        Rectangle.FromXYWH(
-                            100,
-                            200,
-                            120,
-                            0))
-                ]);
+                clickService.Object,
+                freshnessGuard.Object);
 
-        // Act
         Action act = () =>
             sut.Click(
                 snapshot,
                 "ocr-0");
 
-        // Assert
         act.Should()
             .Throw<InvalidOperationException>()
-            .WithMessage(
-                "*ocr-0*zero-area bounds*");
+            .WithMessage("*ocr-0*zero-area bounds*");
 
-        clickServiceMock.VerifyNoOtherCalls();
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(snapshot),
+            Times.Once);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenTargetExists_ShouldClickCenterOfBounds()
+    public void Click_WhenTargetIsValid_ShouldClickAbsoluteAtBoundsCenter()
     {
-        // Arrange
-        Rectangle bounds =
-            Rectangle.FromXYWH(
-                100,
-                200,
-                120,
-                40);
-
         OcrGroundedSnapshot snapshot =
-            new(
-                "screen-42",
-                [
-                    new OcrGroundedTarget(
-                        "ocr-0",
-                        "前往",
-                        bounds)
-                ]);
+            CreateSnapshot(
+                "snapshot-1",
+                CreateTarget(
+                    "ocr-0",
+                    100,
+                    200,
+                    40,
+                    20));
 
-        Mock<IClickService> clickServiceMock =
+        Mock<IClickService> clickService =
             new(MockBehavior.Strict);
 
-        clickServiceMock
-            .Setup(service =>
-                service.ClickAbsolute(
-                    160,
-                    220));
+        clickService
+            .Setup(
+                service =>
+                    service.ClickAbsolute(
+                        120,
+                        210));
 
-        var sut =
-            new OcrGroundedClickService(
-                clickServiceMock.Object);
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            CreatePermissiveFreshnessGuard(snapshot);
 
-        // Act
+        OcrGroundedClickService sut =
+            new(
+                clickService.Object,
+                freshnessGuard.Object);
+
         Action act = () =>
             sut.Click(
                 snapshot,
                 "ocr-0");
 
-        // Assert
         act.Should()
             .NotThrow();
 
-        clickServiceMock.Verify(
-            service =>
-                service.ClickAbsolute(
-                    160,
-                    220),
+        freshnessGuard.Verify(
+            guard =>
+                guard.ThrowIfStale(snapshot),
             Times.Once);
 
-        clickServiceMock.VerifyNoOtherCalls();
+        clickService.Verify(
+            service =>
+                service.ClickAbsolute(
+                    120,
+                    210),
+            Times.Once);
+
+        clickService.VerifyNoOtherCalls();
+        freshnessGuard.VerifyNoOtherCalls();
     }
 
-    private static OcrGroundedSnapshot CreateSnapshot()
+    private static Mock<IOcrGroundedSnapshotFreshnessGuard>
+        CreatePermissiveFreshnessGuard(
+            OcrGroundedSnapshot snapshot)
+    {
+        Mock<IOcrGroundedSnapshotFreshnessGuard> freshnessGuard =
+            new(MockBehavior.Strict);
+
+        freshnessGuard
+            .Setup(
+                guard =>
+                    guard.ThrowIfStale(snapshot));
+
+        return freshnessGuard;
+    }
+
+    private static OcrGroundedSnapshot CreateSnapshot(
+        string snapshotId,
+        params OcrGroundedTarget[] targets)
     {
         return new OcrGroundedSnapshot(
-            "screen-42",
-            [
-                new OcrGroundedTarget(
-                    "ocr-0",
-                    "前往",
-                    Rectangle.FromXYWH(
-                        100,
-                        200,
-                        120,
-                        40))
-            ]);
+            snapshotId,
+            targets);
+    }
+
+    private static OcrGroundedTarget CreateTarget(
+        string targetId,
+        double x,
+        double y,
+        double width,
+        double height)
+    {
+        Rectangle bounds =
+            Rectangle.FromXYWH(
+                x,
+                y,
+                width,
+                height);
+
+        return new OcrGroundedTarget(
+            targetId,
+            "Test target",
+            bounds);
     }
 }
