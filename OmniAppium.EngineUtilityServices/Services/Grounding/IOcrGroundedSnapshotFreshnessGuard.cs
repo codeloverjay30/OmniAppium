@@ -14,6 +14,13 @@ public interface IOcrGroundedSnapshotFreshnessGuard
     void MarkCurrent(string snapshotId);
 
     /// <summary>
+    /// Acquires authorization to execute an action against the specified
+    /// snapshot while preserving atomic snapshot freshness semantics.
+    /// </summary>
+    IOcrGroundedActionLease AcquireCurrent(
+        OcrGroundedSnapshot snapshot);
+        
+    /// <summary>
     /// Throws when the specified snapshot is no longer current.
     /// </summary>
     /// <param name="snapshot">
