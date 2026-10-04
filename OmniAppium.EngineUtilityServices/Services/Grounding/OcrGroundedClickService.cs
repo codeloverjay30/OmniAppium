@@ -10,6 +10,7 @@ public sealed class OcrGroundedClickService
     : IOcrGroundedClickService
 {
     private readonly IClickService _clickService;
+    private readonly IOcrGroundedSnapshotFreshnessGuard _freshnessGuard;
 
     /// <summary>
     /// Initializes a new instance of the
@@ -18,12 +19,18 @@ public sealed class OcrGroundedClickService
     /// <param name="clickService">
     /// The deterministic click service used to execute device clicks.
     /// </param>
+    /// <param name="freshnessGuard">
+    /// The guard used to reject actions authorized by stale OCR-grounded snapshots.
+    /// </param>
     public OcrGroundedClickService(
-        IClickService clickService)
+        IClickService clickService,
+        IOcrGroundedSnapshotFreshnessGuard freshnessGuard)
     {
         ArgumentNullException.ThrowIfNull(clickService);
+        ArgumentNullException.ThrowIfNull(freshnessGuard);
 
         _clickService = clickService;
+        _freshnessGuard = freshnessGuard;
     }
 
     /// <inheritdoc/>
@@ -33,6 +40,8 @@ public sealed class OcrGroundedClickService
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
+
+        _freshnessGuard.ThrowIfStale(snapshot);
 
         if (snapshot.Targets is null)
         {
