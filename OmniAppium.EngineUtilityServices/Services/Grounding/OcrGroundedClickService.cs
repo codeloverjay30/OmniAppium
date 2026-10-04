@@ -20,7 +20,7 @@ public sealed class OcrGroundedClickService
     /// The deterministic click service used to execute device clicks.
     /// </param>
     /// <param name="freshnessGuard">
-    /// The guard used to reject actions authorized by stale OCR-grounded snapshots.
+    /// The guard used to authorize actions against current OCR-grounded snapshots.
     /// </param>
     public OcrGroundedClickService(
         IClickService clickService,
@@ -40,8 +40,6 @@ public sealed class OcrGroundedClickService
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
-
-        _freshnessGuard.ThrowIfStale(snapshot);
 
         if (snapshot.Targets is null)
         {
@@ -84,6 +82,9 @@ public sealed class OcrGroundedClickService
         }
 
         Point center = bounds.Center;
+
+        using IOcrGroundedActionLease lease =
+            _freshnessGuard.AcquireCurrent(snapshot);
 
         _clickService.ClickAbsolute(
             center.X,
