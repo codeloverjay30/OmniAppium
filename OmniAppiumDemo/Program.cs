@@ -2,8 +2,6 @@
 #define IS_LOGGING
 // #define AUTO_EXECUTE_TASKS
 
-using System.Drawing;
-using System.IO.Abstractions;
 using AiUtility.AiBaseUtilityServices.Services;
 using AiUtility.Configurations;
 using AiUtility.GeminiKits.Abstractions;
@@ -21,9 +19,9 @@ using EnumUtilityServices;
 using ExpressionTreeUtilityServices;
 using JsonUtilityServices;
 using LoggerFactoryUtilityServices;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OCRUtilityServices.Models;
-using OCRUtilityServices.Services;
 using OmniAppium.ConfigUtilityService.Controllers;
 using OmniAppium.ConfigUtilityService.Factories;
 using OmniAppium.ConfigUtilityService.Models;
@@ -36,6 +34,7 @@ using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.EngineUtilityServices.Services.OCR;
 using OmniAppium.EngineUtilityServices.Workflows;
 using OmniAppium.LogServices;
+using OmniAppiumDemo.DependencyInjection;
 using ReflectionUtilityServices;
 using ThreadLevelLockingUtilityServices;
 using ThreadLevelLockingUtilityServices.Models;
@@ -44,41 +43,64 @@ using TypeUtilityServices;
 
 #if DEVELOPING
 
-var appDir = AppDomain.CurrentDomain.BaseDirectory;
+var appDir =
+    AppDomain.CurrentDomain.BaseDirectory;
 
 var developmentDeviceConfigPath =
-    Path.Combine(appDir, "development-device.config.json5");
+    Path.Combine(
+        appDir,
+        "development-device.config.json5");
 
 var appConfigPath =
-    Path.Combine(appDir, "app.config.json5");
+    Path.Combine(
+        appDir,
+        "app.config.json5");
 
 var appiumConfigPath =
-    Path.Combine(appDir, "appium.config.json5");
+    Path.Combine(
+        appDir,
+        "appium.config.json5");
 
 var connectionConfigPath =
-    Path.Combine(appDir, "connection.config.json5");
+    Path.Combine(
+        appDir,
+        "connection.config.json5");
 
 var gameConfigPath =
-    Path.Combine(appDir, "game.config.json5");
+    Path.Combine(
+        appDir,
+        "game.config.json5");
 
 var jobsConfigPath =
-    Path.Combine(appDir, "jobs.config.json5");
+    Path.Combine(
+        appDir,
+        "jobs.config.json5");
 
 var geminiSecureConfigPath =
-    Path.Combine(appDir, "secure.config.json5");
+    Path.Combine(
+        appDir,
+        "secure.config.json5");
 
-string geminiConfigPath = Path.Combine(
-    appDir ,
-    "gemini.config.json5");
+var geminiConfigPath =
+    Path.Combine(
+        appDir,
+        "gemini.config.json5");
 
 var logDirectory =
-    Path.Combine(appDir, "Logs");
+    Path.Combine(
+        appDir,
+        "Logs");
 
 var screenshotsDirectory =
-    Path.Combine(appDir, "Screenshots");
+    Path.Combine(
+        appDir,
+        "Screenshots");
 
-Directory.CreateDirectory(logDirectory);
-Directory.CreateDirectory(screenshotsDirectory);
+Directory.CreateDirectory(
+    logDirectory);
+
+Directory.CreateDirectory(
+    screenshotsDirectory);
 
 var loggingConfigurationService =
     new LoggingConfigurationService
@@ -86,7 +108,8 @@ var loggingConfigurationService =
         LogDirectory = logDirectory
     };
 
-loggingConfigurationService.Configure(args);
+loggingConfigurationService.Configure(
+    args);
 
 var globalLoggerFactory =
     loggingConfigurationService.LoggerFactory;
@@ -95,25 +118,26 @@ ILoggerFactoryBaseUtilityService loggerFactoryService =
     new LoggerFactoryBaseUtilityService(
         globalLoggerFactory);
 
-IAiConfigService geminiConfigService =
-    new AiConfigService
-    {
-        AiConfigPath = geminiConfigPath,
-    };
-    
-GeminiApiOptions geminiApiOptions =
-    geminiConfigService.ReadData<GeminiApiOptions>();
-
-var logger =
+ILogger logger =
     loggerFactoryService.Logger;
 
 logger.LogInformation(
     "Starting OmniAppium automation engine.");
 
-// Temporary diagnostic:
-// Verify the OCRUtilityServices assembly loaded by this process.
+IAiConfigService geminiConfigService =
+    new AiConfigService
+    {
+        AiConfigPath =
+            geminiConfigPath
+    };
+
+GeminiApiOptions geminiApiOptions =
+    geminiConfigService
+        .ReadData<GeminiApiOptions>();
+
 Type ocrServiceType =
-    typeof(OCRUtilityServices.Services.OCRUtilityService);
+    typeof(
+        OCRUtilityServices.Services.OCRUtilityService);
 
 logger.LogInformation(
     "OCRUtilityServices runtime assembly: {Assembly}; Location: {Location}",
@@ -131,34 +155,40 @@ var driverFactory =
         DevelopmentDeviceConfig =
             new ConfigBean<DevelopmentDeviceConfig>
             {
-                Path = developmentDeviceConfigPath
+                Path =
+                    developmentDeviceConfigPath
             },
 
         AppiumConfig =
             new ConfigBean<AppiumConfig>
             {
-                Path = appiumConfigPath
+                Path =
+                    appiumConfigPath
             },
 
         AppConfig =
             new ConfigBean<AppConfig>
             {
-                Path = appConfigPath
+                Path =
+                    appConfigPath
             },
 
         ConnectionConfig =
             new ConfigBean<ConnectionConfig>
             {
-                Path = connectionConfigPath
+                Path =
+                    connectionConfigPath
             },
 
         GameConfig =
             new ConfigBean<GameConfig>
             {
-                Path = gameConfigPath
+                Path =
+                    gameConfigPath
             },
 
-        TransversalService = transversalService
+        TransversalService =
+            transversalService
     };
 
 driverFactory.Initialize();
@@ -170,7 +200,8 @@ var jobsConfigService =
     new ConfigService<JobsConfig>(
         loggerFactoryService)
     {
-        TransversalService = transversalService
+        TransversalService =
+            transversalService
     };
 
 jobsConfigService.ValidateConfig(
@@ -208,7 +239,8 @@ foreach (var job in jobsConfig.Jobs)
 var driver =
     driverFactory.Create();
 
-ArgumentNullException.ThrowIfNull(driver);
+ArgumentNullException.ThrowIfNull(
+    driver);
 
 var driverControlService =
     new DriverControlService
@@ -218,6 +250,13 @@ var driverControlService =
 
 try
 {
+    /*
+     * Runtime-owned Appium services remain in the composition root.
+     *
+     * The DI container consumes these instances but does not create
+     * the active Appium driver.
+     */
+
     ScreenService screenService =
         new AndroidScreenService
         {
@@ -225,7 +264,9 @@ try
         };
 
     var developmentDeviceConfig =
-        driverFactory.DevelopmentDeviceConfig.Data;
+        driverFactory
+            .DevelopmentDeviceConfig
+            .Data;
 
     ArgumentNullException.ThrowIfNull(
         developmentDeviceConfig);
@@ -236,7 +277,7 @@ try
     var referenceScreenSize =
         developmentDeviceConfig.ScreenSize;
 
-    var currentScreenSize1 =
+    var currentScreenSize =
         screenService.GetFreshScreenSize();
 
 #if IS_LOGGING
@@ -248,8 +289,8 @@ try
 
     logger.LogInformation(
         "Current resolution: {Width}x{Height}",
-        currentScreenSize1.Width,
-        currentScreenSize1.Height);
+        currentScreenSize.Width,
+        currentScreenSize.Height);
 
 #endif
 
@@ -257,16 +298,19 @@ try
         new ResolutionScaler(
             referenceScreenSize.Width,
             referenceScreenSize.Height,
-            currentScreenSize1.Width,
-            currentScreenSize1.Height);
+            currentScreenSize.Width,
+            currentScreenSize.Height);
 
     ClickService clickService =
         new ClickService(
             loggerFactoryService,
             true)
         {
-            ScreenService = screenService,
-            Scaler = resolutionScaler
+            ScreenService =
+                screenService,
+
+            Scaler =
+                resolutionScaler
         };
 
     WaitService waitService =
@@ -274,147 +318,62 @@ try
             loggerFactoryService,
             true)
         {
-            Driver = driver
+            Driver =
+                driver
         };
 
-    using var screenshotService =
+    var screenshotService =
         new ScreenshotService(
             loggerFactoryService,
             true)
         {
-            Driver = driver
+            Driver =
+                driver
         };
 
-IFileSystem fileSystem = new FileSystem();
+    /*
+     * Application service composition.
+     */
 
-IOCRUtilityService ocrUtilityService =
-    new OCRUtilityService();
+    var services =
+        new ServiceCollection();
 
-IOcrTextMatcher ocrTextMatcher =
-    new OcrTextMatcher();
-
-IOcrDiagnosticImageWriter ocrDiagnosticImageWriter =
-    new OcrDiagnosticImageWriter(fileSystem);
-
-IAndroidScreenOcrService androidScreenOcrService =
-    new AndroidScreenOcrService(
-        screenshotService,
-        ocrUtilityService,
+    services.AddOmniAppiumRuntime(
         loggerFactoryService,
-        ocrDiagnosticImageWriter
-    );
+        screenshotService);
 
-IOcrClickService ocrClickService =
-    new OcrClickService(
-        androidScreenOcrService,
-        ocrTextMatcher,
-        clickService,
-        loggerFactoryService);
+    /*
+     * ClickService and WaitService are already initialized with
+     * driver-specific runtime state, so register the existing instances.
+     */
 
-IOcrPageVerificationService ocrPageVerificationService =
-    new OcrPageVerificationService(
-        androidScreenOcrService,
-        ocrTextMatcher,
-        TimeProvider.System,
-        loggerFactoryService);
+    services.AddSingleton<
+        IClickService>(
+            clickService);
 
-    IGameWorkflowStepExecutor gameWorkflowStepExecutor =
-        new GameWorkflowStepExecutor(
-            ocrClickService,
-            ocrPageVerificationService);
-    
-IAndroidScreenOcrService screenOcrService =
-    new AndroidScreenOcrService(
-        screenshotService,
-        ocrUtilityService,
-        loggerFactoryService);
+    services.AddSingleton<
+        IWaitService>(
+            waitService);
 
-
-OcrResult ocrResult =
-    await screenOcrService.RecognizeCurrentScreenAsync();
-
-logger.LogInformation(
-    "OCR recognized text: {Text}",
-    ocrResult.Text);
-
-foreach (OcrTextLine line in ocrResult.Lines)
-{
-    logger.LogInformation(
-        "OCR line: {Text}; " +
-        "TopLeft=({Left}, {Top}); " +
-        "BottomRight=({Right}, {Bottom}); " +
-        "Center=({CenterX}, {CenterY})",
-        line.Text,
-        line.Bounds.TopLeft.X,
-        line.Bounds.TopLeft.Y,
-        line.Bounds.BottomRight.X,
-        line.Bounds.BottomRight.Y,
-        line.Bounds.Center.X,
-        line.Bounds.Center.Y);
-}
-
-GameWorkflowStep taskWorkflowStep = new(
-        ClickText: "任務",
-        VerificationTexts:
-        [
-            "日常",
-            "週常",
-            "成就"
-        ],
-        ClickTimeout: TimeSpan.FromSeconds(30),
-        VerificationTimeout: TimeSpan.FromSeconds(10));
-    
-#if IS_LOGGING
-loggerFactoryService.Logger.LogInformation(
-    "Executing OCR workflow: Click {ClickText} and verify [{VerificationTexts}]",
-    taskWorkflowStep.ClickText,
-    string.Join(", ", taskWorkflowStep.VerificationTexts));
-#endif
-
-await gameWorkflowStepExecutor.ExecuteAsync(
-    taskWorkflowStep);
-
-#if IS_LOGGING
-loggerFactoryService.Logger.LogInformation(
-    "OCR workflow completed successfully.");
-#endif
-
-GameWorkflowStep weeklykWorkflowStep = new(
-        ClickText: "週常",
-        VerificationTexts:
-        [
-            "日常",
-            "週常",
-            "成就",
-            "使用25次快速掛機",
-            "演武大會獲勝40次",
-            //"進階任意武將2次", //不穩定的marker，Windows OCR會將圖片上的這個文字辨識成`進 阝 皆 亻 壬 意 武 將 2 次`
-        ],
-        ClickTimeout: TimeSpan.FromSeconds(30),
-        VerificationTimeout: TimeSpan.FromSeconds(10));
-    
-#if IS_LOGGING
-loggerFactoryService.Logger.LogInformation(
-    "Executing OCR workflow: Click {ClickText} and verify [{VerificationTexts}]",
-    weeklykWorkflowStep.ClickText,
-    string.Join(", ", weeklykWorkflowStep.VerificationTexts));
-#endif
-
-await gameWorkflowStepExecutor.ExecuteAsync(
-    weeklykWorkflowStep);
-
-#if IS_LOGGING
-loggerFactoryService.Logger.LogInformation(
-    "OCR workflow completed successfully.");
-#endif
+    services
+        .AddOcrUtilityServices()
+        .AddOmniAppiumOcrServices()
+        .AddAndroidScreenObservation();
 
 #if AUTO_EXECUTE_TASKS
+
+    /*
+     * Gemini infrastructure.
+     */
 
     var aiExecutionSettings =
         new AiExecutionSettings
         {
-            LastTokenCountNeededToBeKept = 5,
-            MaxSteps = 20,
+            LastTokenCountNeededToBeKept =
+                5,
+
+            MaxSteps =
+                20,
 
             Threshold =
                 AiUtility.AiBaseUtilityServices
@@ -425,8 +384,12 @@ loggerFactoryService.Logger.LogInformation(
             ToolExecutionTimeout =
                 TimeSpan.FromMinutes(2),
 
-            ForceSequentialToolExecution = true
+            ForceSequentialToolExecution =
+                true
         };
+
+    services.AddSingleton(
+        aiExecutionSettings);
 
     var globalSemaphoreSlimModel =
         new SemaphoreSlimModel
@@ -445,8 +408,11 @@ loggerFactoryService.Logger.LogInformation(
     var circuitBreakerModel =
         new CircuitBreakerModel
         {
-            ContinuousFailureCount = 0,
-            MaxAllowedFailureCount = 3,
+            ContinuousFailureCount =
+                0,
+
+            MaxAllowedFailureCount =
+                3,
 
             CoolDown =
                 TimeSpan.FromSeconds(30)
@@ -460,7 +426,8 @@ loggerFactoryService.Logger.LogInformation(
             globalSemaphoreSlimModel:
                 globalSemaphoreSlimModel,
 
-            maxRequestsPerWindow: 2,
+            maxRequestsPerWindow:
+                2,
 
             maxLimitRate:
                 TimeSpan.FromSeconds(30),
@@ -474,56 +441,95 @@ loggerFactoryService.Logger.LogInformation(
             needToStartWatchDog:
                 false);
 
-    ITypeUtilityService typeUtilityService =
-        new TypeUtilityService();
+    services.AddSingleton(
+        semaphoreSlimService);
 
-    IJsonUtilityService jsonUtilityService =
-        new JsonUtilityService(
-            typeUtilityService);
+    services.AddSingleton<
+        ITypeUtilityService,
+        TypeUtilityService>();
 
-    IEnumUtilityService enumUtilityService =
-        new EnumUtilityService();
+    services.AddSingleton<
+        IJsonUtilityService>(
+            serviceProvider =>
+                new JsonUtilityService(
+                    serviceProvider
+                        .GetRequiredService<
+                            ITypeUtilityService>()));
 
-    IExpressionTreeUtilityService expressionTreeUtilityService =
-        new ExpressionTreeUtilityService();
+    services.AddSingleton<
+        IEnumUtilityService,
+        EnumUtilityService>();
 
-    IReflectionUtilityService reflectionUtilityService =
-        new ReflectionUtilityService(
-            expressionTreeUtilityService);
+    services.AddSingleton<
+        IExpressionTreeUtilityService,
+        ExpressionTreeUtilityService>();
 
-    IGeminiToolRegistry geminiToolRegistry =
-        new GeminiToolRegistry(
-            reflectionUtilityService);
+    services.AddSingleton<
+        IReflectionUtilityService>(
+            serviceProvider =>
+                new ReflectionUtilityService(
+                    serviceProvider
+                        .GetRequiredService<
+                            IExpressionTreeUtilityService>()));
 
-    IAiParameterSchemaGenerator parameterSchemaGenerator =
-        new GeminiSchemaGenerator(
-            jsonUtilityService,
-            typeUtilityService);
+    services.AddSingleton<
+        IGeminiToolRegistry>(
+            serviceProvider =>
+                new GeminiToolRegistry(
+                    serviceProvider
+                        .GetRequiredService<
+                            IReflectionUtilityService>()));
 
-    IGeminiParameterPropertyMapper parameterPropertyMapper =
-        new GeminiParameterPropertyMapper();
-    
+    services.AddSingleton<
+        IAiParameterSchemaGenerator>(
+            serviceProvider =>
+                new GeminiSchemaGenerator(
+                    serviceProvider
+                        .GetRequiredService<
+                            IJsonUtilityService>(),
 
-    // Register the actual Appium services as Gemini tools.
-    geminiToolRegistry.Register<ClickService>(
-    () => clickService);
+                    serviceProvider
+                        .GetRequiredService<
+                            ITypeUtilityService>()));
 
-    geminiToolRegistry.Register<WaitService>(
-        () => waitService);
-    
-    var geminiToolConverter =
-        new GeminiToolConverter(
-            jsonUtilityService,
-            enumUtilityService,
-            parameterSchemaGenerator,
-            parameterPropertyMapper);
+    services.AddSingleton<
+        IGeminiParameterPropertyMapper,
+        GeminiParameterPropertyMapper>();
 
-    IGeminiToolService geminiToolService =
-        new GeminiToolService(
-            geminiToolRegistry,
-            geminiToolConverter,
-            loggerFactoryService,
-            true);
+    services.AddSingleton<
+        GeminiToolConverter>(
+            serviceProvider =>
+                new GeminiToolConverter(
+                    serviceProvider
+                        .GetRequiredService<
+                            IJsonUtilityService>(),
+
+                    serviceProvider
+                        .GetRequiredService<
+                            IEnumUtilityService>(),
+
+                    serviceProvider
+                        .GetRequiredService<
+                            IAiParameterSchemaGenerator>(),
+
+                    serviceProvider
+                        .GetRequiredService<
+                            IGeminiParameterPropertyMapper>()));
+
+    services.AddSingleton<
+        IGeminiToolService>(
+            serviceProvider =>
+                new GeminiToolService(
+                    serviceProvider
+                        .GetRequiredService<
+                            IGeminiToolRegistry>(),
+
+                    serviceProvider
+                        .GetRequiredService<
+                            GeminiToolConverter>(),
+
+                    loggerFactoryService,
+                    true));
 
     IAiConfigService aiConfigService =
         new AiConfigService
@@ -538,159 +544,323 @@ loggerFactoryService.Logger.LogInformation(
     ArgumentException.ThrowIfNullOrWhiteSpace(
         geminiApiKey);
 
-    using var httpClient =
+    var httpClient =
         new HttpClient();
 
-    IGeminiApiClient geminiApiClient =
-        new GeminiApiClient(
-            loggerFactoryService,
-            true)
-        {
-            HttpClient = httpClient,
+    services.AddSingleton(
+        httpClient);
 
-            ApiKey =
-                geminiApiKey,
-            ApiOptions = geminiApiOptions
-        };
+    services.AddSingleton<
+        IGeminiApiClient>(
+            _ =>
+                new GeminiApiClient(
+                    loggerFactoryService,
+                    true)
+                {
+                    HttpClient =
+                        httpClient,
 
-    IGeminiConversationManager geminiConversationManager =
-        new GeminiConversationManager(
-            loggerFactoryService,
-            geminiApiClient);
+                    ApiKey =
+                        geminiApiKey,
 
-    IGeminiToolExecutor geminiToolExecutor =
-        new GeminiToolExecutor(
-            geminiToolRegistry,
-            typeUtilityService);
+                    ApiOptions =
+                        geminiApiOptions
+                });
 
-    IGeminiSessionManager geminiSessionManager =
-        new GeminiSessionManager(
-            loggerFactoryService,
-            geminiConversationManager,
-            geminiToolService,
-            geminiToolExecutor,
-            semaphoreSlimService);
+    services.AddSingleton<
+        IGeminiConversationManager>(
+            serviceProvider =>
+                new GeminiConversationManager(
+                    loggerFactoryService,
 
-    /*
-     * Your current GeminiJobHandler constructor still requires:
-     *
-     * IToolRegistry<ToolMetadataBase, GeminiToolAttribute>
-     * IToolDispatcher<ToolMetadataBase, GeminiToolAttribute>
-     *
-     * while the existing Gemini infrastructure exposes
-     * IGeminiToolRegistry / IGeminiToolDispatcher.
-     *
-     * This type-contract mismatch should be corrected in GeminiJobHandler
-     * before creating it here.
-     */
+                    serviceProvider
+                        .GetRequiredService<
+                            IGeminiApiClient>()));
+
+    services.AddSingleton<
+        IGeminiToolExecutor>(
+            serviceProvider =>
+                new GeminiToolExecutor(
+                    serviceProvider
+                        .GetRequiredService<
+                            IGeminiToolRegistry>(),
+
+                    serviceProvider
+                        .GetRequiredService<
+                            ITypeUtilityService>()));
+
+    services.AddSingleton<
+        IGeminiSessionManager>(
+            serviceProvider =>
+                new GeminiSessionManager(
+                    loggerFactoryService,
+
+                    serviceProvider
+                        .GetRequiredService<
+                            IGeminiConversationManager>(),
+
+                    serviceProvider
+                        .GetRequiredService<
+                            IGeminiToolService>(),
+
+                    serviceProvider
+                        .GetRequiredService<
+                            IGeminiToolExecutor>(),
+
+                    serviceProvider
+                        .GetRequiredService<
+                            ISemaphoreSlimService>()));
+
+    services.AddSingleton<
+        IProgress<WorkflowProgress>>(
+            new Progress<WorkflowProgress>(
+                progress =>
+                {
+#if IS_LOGGING
+
+                    logger.LogInformation(
+                        "AI workflow progress: {Progress}",
+                        progress);
 
 #endif
+                }));
+
+    /*
+     * Slice 3:
+     *
+     * GeminiJobHandler consumes IAndroidScreenObservationService.
+     * It no longer owns screenshot acquisition directly.
+     */
+
+    services.AddSingleton<
+        IGeminiJobHandler,
+        GeminiJobHandler<WorkflowProgress>>();
+
+#endif
+
+    /*
+     * Validate the complete object graph before executing any workflow.
+     */
+
+    using ServiceProvider serviceProvider =
+        services.BuildServiceProvider(
+            new ServiceProviderOptions
+            {
+                ValidateOnBuild =
+                    true,
+
+                ValidateScopes =
+                    true
+            });
+
+#if AUTO_EXECUTE_TASKS
+
+    /*
+     * Gemini tool registration requires the shared registry instance
+     * created by the container.
+     */
+
+    IGeminiToolRegistry geminiToolRegistry =
+        serviceProvider
+            .GetRequiredService<
+                IGeminiToolRegistry>();
+
+    geminiToolRegistry.Register<ClickService>(
+        () => clickService);
+
+    geminiToolRegistry.Register<WaitService>(
+        () => waitService);
+
+#endif
+
+    /*
+     * Real-device checkpoint:
+     *
+     * Verify screenshot -> OCR using the exact service instance used
+     * by the application graph.
+     */
+
+    IAndroidScreenOcrService androidScreenOcrService =
+        serviceProvider
+            .GetRequiredService<
+                IAndroidScreenOcrService>();
+
+    OcrResult ocrResult =
+        await androidScreenOcrService
+            .RecognizeCurrentScreenAsync();
+
+#if IS_LOGGING
+
+    logger.LogInformation(
+        "OCR recognized text: {Text}",
+        ocrResult.Text);
+
+    foreach (OcrTextLine line in ocrResult.Lines)
+    {
+        logger.LogInformation(
+            "OCR line: {Text}; " +
+            "TopLeft=({Left}, {Top}); " +
+            "BottomRight=({Right}, {Bottom}); " +
+            "Center=({CenterX}, {CenterY})",
+            line.Text,
+            line.Bounds.TopLeft.X,
+            line.Bounds.TopLeft.Y,
+            line.Bounds.BottomRight.X,
+            line.Bounds.BottomRight.Y,
+            line.Bounds.Center.X,
+            line.Bounds.Center.Y);
+    }
+
+#endif
+
+    /*
+     * Real-device OCR workflow.
+     */
+
+    IGameWorkflowStepExecutor gameWorkflowStepExecutor =
+        serviceProvider
+            .GetRequiredService<
+                IGameWorkflowStepExecutor>();
+
+    GameWorkflowStep taskWorkflowStep =
+        new(
+            ClickText:
+                "任務",
+
+            VerificationTexts:
+            [
+                "日常",
+                "週常",
+                "成就"
+            ],
+
+            ClickTimeout:
+                TimeSpan.FromSeconds(30),
+
+            VerificationTimeout:
+                TimeSpan.FromSeconds(10));
+
+#if IS_LOGGING
+
+    logger.LogInformation(
+        "Executing OCR workflow: Click {ClickText} and verify [{VerificationTexts}]",
+        taskWorkflowStep.ClickText,
+        string.Join(
+            ", ",
+            taskWorkflowStep.VerificationTexts));
+
+#endif
+
+    await gameWorkflowStepExecutor
+        .ExecuteAsync(
+            taskWorkflowStep);
+
+#if IS_LOGGING
+
+    logger.LogInformation(
+        "OCR workflow completed successfully.");
+
+#endif
+
+    GameWorkflowStep weeklyWorkflowStep =
+        new(
+            ClickText:
+                "週常",
+
+            VerificationTexts:
+            [
+                "日常",
+                "週常",
+                "成就",
+                "使用25次快速掛機",
+                "演武大會獲勝40次"
+            ],
+
+            ClickTimeout:
+                TimeSpan.FromSeconds(30),
+
+            VerificationTimeout:
+                TimeSpan.FromSeconds(10));
+
+#if IS_LOGGING
+
+    logger.LogInformation(
+        "Executing OCR workflow: Click {ClickText} and verify [{VerificationTexts}]",
+        weeklyWorkflowStep.ClickText,
+        string.Join(
+            ", ",
+            weeklyWorkflowStep.VerificationTexts));
+
+#endif
+
+    await gameWorkflowStepExecutor
+        .ExecuteAsync(
+            weeklyWorkflowStep);
+
+#if IS_LOGGING
+
+    logger.LogInformation(
+        "OCR workflow completed successfully.");
+
+#endif
+
+    /*
+     * Job handlers that wrap runtime-owned Appium services.
+     */
 
     var handlers =
         new List<IJobHandler>
         {
-            new OmniAppium.EngineUtilityService.Utilities.WaitJobHandler(
+            new WaitJobHandler(
                 waitService),
 
-            new OmniAppium.EngineUtilityService.Utilities.ClickJobHandler(
+            new ClickJobHandler(
                 clickService),
 
-            new OmniAppium.EngineUtilityService.Utilities.ScreenshotJobHandler(
+            new ScreenshotJobHandler(
                 screenshotService)
         };
 
 #if AUTO_EXECUTE_TASKS
 
-    /*
-     * Add GeminiJobHandler<WorkflowProgress> here after
-     * its constructor types have been aligned with the existing
-     * Gemini abstractions.
-     *
-     * Example target shape:
-     *
-     * IProgress<WorkflowProgress> progress =
-     *     new Progress<WorkflowProgress>();
-     *
-     * var geminiJobHandler =
-     *     new GeminiJobHandler<WorkflowProgress>(
-     *         aiExecutionSettings,
-     *         geminiToolRegistry,
-     *         geminiToolDispatcher,
-     *         geminiToolConverter,
-     *         geminiSessionManager,
-     *         screenshotService,
-     *         progress);
-     *
-     * handlers.Add(geminiJobHandler);
-     */
+    IGeminiJobHandler geminiJobHandler =
+        serviceProvider
+            .GetRequiredService<
+                IGeminiJobHandler>();
 
-IProgress<WorkflowProgress> workflowProgress =
-    new Progress<WorkflowProgress>(
-        progress =>
-        {
-#if IS_LOGGING
+    handlers.Add(
+        geminiJobHandler);
 
-            logger.LogInformation(
-                "AI workflow progress: {Progress}",
-                progress);
-
-#endif
-        });
-
-
-IGeminiJobHandler geminiJobHandler =
-    new GeminiJobHandler<WorkflowProgress>(
-        aiExecutionSettings:
-            aiExecutionSettings,
-
-        registry:
-            geminiToolRegistry,
-
-        converter:
-            geminiToolConverter,
-
-        sessionManager:
-            geminiSessionManager,
-
-        screenshotService:
-            screenshotService,
-
-        progressBar:
-            workflowProgress);
-
-handlers.Add(
-    geminiJobHandler);
-
-IAutoTaskExecutionUtilityService executionService =
-    new AutoTaskExecutionUtilityService(
-        handlers);
+    IAutoTaskExecutionUtilityService executionService =
+        new AutoTaskExecutionUtilityService(
+            handlers);
 
 #if IS_LOGGING
 
-logger.LogInformation(
-    "DIAGNOSTIC: Before ExecuteSequenceAsync. JobCount={JobCount}",
-    jobsConfig.Jobs.Count);
+    logger.LogInformation(
+        "DIAGNOSTIC: Before ExecuteSequenceAsync. JobCount={JobCount}",
+        jobsConfig.Jobs.Count);
 
-logger.LogInformation(
-    "Starting configured automation sequence.");
+    logger.LogInformation(
+        "Starting configured automation sequence.");
 
 #endif
 
-await executionService.ExecuteSequenceAsync(
-    jobsConfig.Jobs);
+    await executionService
+        .ExecuteSequenceAsync(
+            jobsConfig.Jobs);
 
 #if IS_LOGGING
 
-logger.LogInformation(
-    "DIAGNOSTIC: After ExecuteSequenceAsync.");
+    logger.LogInformation(
+        "DIAGNOSTIC: After ExecuteSequenceAsync.");
 
-logger.LogInformation(
-    "Configured automation sequence completed.");
-
-#endif
+    logger.LogInformation(
+        "Configured automation sequence completed.");
 
 #endif
 
+#endif
 }
 catch (Exception ex)
 {
