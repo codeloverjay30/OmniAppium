@@ -2,12 +2,14 @@ using AiUtility.AiBaseUtilityServices.Models;
 using AiUtility.GeminiKits.Abstractions;
 using AiUtility.GeminiKits.Mappers;
 using AiUtility.GeminiKits.Services;
+using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
 using AiUtility.ToolKits.Services;
 using EnumUtilityServices;
 using FluentAssertions;
 using JsonUtilityServices;
 using Moq;
+using OCRUtilityServices.Models;
 using OmniAppium.ConfigUtilityService.Models;
 using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.EngineUtilityServices.Models.Observation;
@@ -476,17 +478,19 @@ public sealed class GeminiJobHandlerTests
     [Fact]
     public async Task AutoExecuteAsync_ShouldPassObservationImageBytesToGeminiRequest()
     {
+        // Arrange
         byte[] expectedImageBytes =
         [
             0x10,
-            0x20,
-            0x30,
-            0x40,
-            0x50
+        0x20,
+        0x30,
+        0x40,
+        0x50
         ];
 
         IAndroidScreenObservation observation =
-            CreateObservation(expectedImageBytes);
+            CreateObservation(
+                expectedImageBytes);
 
         _observationServiceMock
             .Setup(service =>
@@ -494,20 +498,19 @@ public sealed class GeminiJobHandlerTests
                     It.IsAny<CancellationToken>()))
             .ReturnsAsync(observation);
 
-        AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest?
-            capturedRequest = null;
+        GeminiGenerateRequest? capturedRequest =
+            null;
 
         _sessionManagerMock
             .Setup(sessionManager =>
                 sessionManager.ExecuteWithToolSupportAsync<WorkflowProgress>(
-                    It.IsAny<
-                        AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest>(),
+                    It.IsAny<GeminiGenerateRequest>(),
                     It.IsAny<string>(),
                     It.IsAny<AiExecutionSettings>(),
                     It.IsAny<CancellationToken>(),
                     It.IsAny<IProgress<WorkflowProgress>>()))
             .Callback<
-                AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest,
+                GeminiGenerateRequest,
                 string,
                 AiExecutionSettings,
                 CancellationToken,
@@ -534,24 +537,130 @@ public sealed class GeminiJobHandlerTests
         Func<Task> act =
             () => sut.AutoExecuteAsync(job);
 
+        // Act & Assert
         await act.Should()
             .ThrowAsync<InvalidOperationException>()
-            .WithMessage("Stop after request capture.");
+            .WithMessage(
+                "Stop after request capture.");
 
-        capturedRequest.Should().NotBeNull();
+        capturedRequest
+            .Should()
+            .NotBeNull();
 
-        /*
-         * Do not inspect a guessed request property here.
-         *
-         * The request contract stores image bytes in GeminiPart.InlineData.RawData.
-         * If your current GeminiGenerateRequest exposes Contents publicly,
-         * assert the RawData below using that existing public API.
-         *
-         * The critical Slice-3 source invariant is already protected by:
-         * - exactly one ObserveAsync call;
-         * - the handler having no IScreenshotService dependency;
-         * - the request being constructed only after that observation.
-         */
+        GeminiPart[] imageParts =
+            capturedRequest!
+                .Contents
+                .SelectMany(message => message.Parts)
+                .Where(part => part.InlineData is not null)
+                .ToArray();
+
+        imageParts
+            .Should()
+            .ContainSingle(
+                "the request must contain the image from the Android screen observation");
+
+        imageParts[0]
+            .InlineData!
+            .RawData
+            .ToArray()
+            .Should()
+            .Equal(
+                expectedImageBytes,
+                "Gemini must receive the exact image bytes from the observation");
+    }
+
+    [Fact]
+    public async Task AutoExecuteAsync_ShouldIncludeObservationOcrTextInGeminiRequest()
+    {
+        // Arrange
+        const string expectedOcrText =
+            "主城 任務 商城";
+
+        byte[] imageBytes =
+        [
+            0x01,
+        0x02,
+        0x03,
+        0x04
+        ];
+
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                imageBytes,
+                expectedOcrText);
+
+        _observationServiceMock
+            .Setup(service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(observation);
+
+        GeminiGenerateRequest? capturedRequest =
+            null;
+
+        _sessionManagerMock
+            .Setup(sessionManager =>
+                sessionManager.ExecuteWithToolSupportAsync<WorkflowProgress>(
+                    It.IsAny<GeminiGenerateRequest>(),
+                    It.IsAny<string>(),
+                    It.IsAny<AiExecutionSettings>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IProgress<WorkflowProgress>>()))
+            .Callback<
+                GeminiGenerateRequest,
+                string,
+                AiExecutionSettings,
+                CancellationToken,
+                IProgress<WorkflowProgress>?>(
+                (
+                    request,
+                    _,
+                    _,
+                    _,
+                    _) =>
+                {
+                    capturedRequest = request;
+                })
+            .ThrowsAsync(
+                new InvalidOperationException(
+                    "Stop after request capture."));
+
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
+
+        GeminiJob job =
+            CreateValidGeminiJob();
+
+        Func<Task> act =
+            () => sut.AutoExecuteAsync(job);
+
+        // Act & Assert
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage(
+                "Stop after request capture.");
+
+        capturedRequest
+            .Should()
+            .NotBeNull();
+
+        string[] requestTexts =
+            capturedRequest!
+                .Contents
+                .SelectMany(message => message.Parts)
+                .Select(part => part.RawText.ToString())
+                .Where(text =>
+                    !string.IsNullOrEmpty(text))
+                .ToArray();
+
+        requestTexts
+            .Should()
+            .Contain(
+                text =>
+                    text.Contains(
+                        expectedOcrText,
+                        StringComparison.Ordinal),
+                "the Gemini request must contain OCR text from the acquired observation");
     }
 
     private GeminiJobHandler<WorkflowProgress> CreateSut()
@@ -585,25 +694,26 @@ public sealed class GeminiJobHandlerTests
     }
 
     private static IAndroidScreenObservation CreateObservation(
-        byte[] imageBytes)
+        byte[] imageBytes,
+        string ocrText = "")
     {
+        ArgumentNullException.ThrowIfNull(imageBytes);
+
         Mock<IAndroidScreenObservation> observationMock =
             new(MockBehavior.Strict);
+
+        OcrResult ocrResult =
+            new(
+                ocrText,
+                Array.Empty<OcrTextLine>());
 
         observationMock
             .SetupGet(observation => observation.ImageBytes)
             .Returns(imageBytes);
 
-        /*
-         * Do not Setup OcrResult yet.
-         *
-         * The current GeminiJobHandler implementation shown in the latest
-         * Repomix consumes ImageBytes but does not yet consume OcrResult.
-         *
-         * MockBehavior.Strict intentionally turns an unexpected OcrResult
-         * access into a visible test change when OCR-context integration is
-         * implemented.
-         */
+        observationMock
+            .SetupGet(observation => observation.OcrResult)
+            .Returns(ocrResult);
 
         return observationMock.Object;
     }
