@@ -331,9 +331,120 @@ try
                 driver
         };
 
-    /*
-     * Application service composition.
-     */
+// Existing Android/Appium runtime initialization remains above this point.
+// driver
+// screenshotService
+// clickService
+// waitService
+// loggerFactoryService
+// etc.
+
+var services =
+    new ServiceCollection();
+
+/*
+ * Runtime-owned Appium services.
+ */
+
+services.AddSingleton<ILoggerFactoryBaseUtilityService>(
+    loggerFactoryService);
+
+services.AddSingleton<IScreenshotService>(
+    screenshotService);
+
+services.AddSingleton<IClickService>(clickService);
+
+services.AddSingleton<IWaitService>(
+    waitService);
+
+/*
+ * OCR and Android screen observation infrastructure.
+ */
+
+services.AddOcrUtilityServices();
+services.AddAndroidOcrServices();
+services.AddAndroidScreenObservation();
+
+#if AUTO_EXECUTE_TASKS || GEMINI_READ_ONLY_SMOKE_TEST
+
+/*
+ * Gemini infrastructure.
+ */
+
+var aiExecutionSettings =
+    new AiExecutionSettings
+    {
+        LastTokenCountNeededToBeKept =
+            5,
+
+        MaxSteps =
+            20,
+
+        Threshold =
+            AiUtility.AiBaseUtilityServices
+                .Consts.Constants
+                .ExecutionSettings
+                .MAX_THRESHOLD,
+
+        ToolExecutionTimeout =
+            TimeSpan.FromMinutes(2),
+
+        ForceSequentialToolExecution =
+            true
+    };
+
+var globalSemaphoreSlimModel =
+    new SemaphoreSlimModel
+    {
+        InitialCount = 2,
+        MaxCount = 2
+    };
+
+var watchdogModel =
+    new WatchdogModel
+    {
+        Timeout =
+            TimeSpan.FromMinutes(2)
+    };
+
+var circuitBreakerModel =
+    new CircuitBreakerModel
+    {
+        ContinuousFailureCount =
+            0,
+
+        MaxAllowedFailureCount =
+            3,
+
+        CoolDown =
+            TimeSpan.FromSeconds(30)
+    };
+
+ISemaphoreSlimService semaphoreSlimService =
+    new SemaphoreSlimService(
+        loggerFactoryService:
+            loggerFactoryService,
+
+        globalSemaphoreSlimModel:
+            globalSemaphoreSlimModel,
+
+        maxRequestsPerWindow:
+            2,
+
+        maxLimitRate:
+            TimeSpan.FromSeconds(30),
+
+        watchdogModel:
+            watchdogModel,
+
+        circuitBreakerModel:
+            circuitBreakerModel,
+
+        needToStartWatchDog:
+            false);
+
+ITypeUtilityService typeUtilityService =
+    new TypeUtilityService();
 
     var services =
         new ServiceCollection();
@@ -348,17 +459,23 @@ try
      */
 
     services.AddSingleton<
-        IClickService>(
-            clickService);
+        IAndroidScreenOcrService,
+        AndroidScreenOcrService>();
 
     services.AddSingleton<
-        IWaitService>(
-            waitService);
+        IGameWorkflowStepExecutor,
+        GameWorkflowStepExecutor>();
+    
+    // IMPORTANT:
+    // Nothing required by GeminiJobHandler may be registered after this.
+    using ServiceProvider serviceProvider =
+        services.BuildServiceProvider(
+            new ServiceProviderOptions
+            {
+                ValidateOnBuild = true,
+                ValidateScopes = true
+            });
 
-    services
-        .AddOcrUtilityServices()
-        .AddOmniAppiumOcrServices()
-        .AddAndroidScreenObservation();
 
 #if AUTO_EXECUTE_TASKS
 
@@ -638,21 +755,6 @@ try
 
 #endif
 
-    /*
-     * Validate the complete object graph before executing any workflow.
-     */
-
-    using ServiceProvider serviceProvider =
-        services.BuildServiceProvider(
-            new ServiceProviderOptions
-            {
-                ValidateOnBuild =
-                    true,
-
-                ValidateScopes =
-                    true
-            });
-
 #if AUTO_EXECUTE_TASKS
 
     /*
@@ -713,6 +815,19 @@ try
 
 #endif
 
+    services.AddSingleton<
+        IOcrClickService,
+        OcrClickService>();
+
+    services.AddSingleton<
+        IOcrPageVerificationService,
+        OcrPageVerificationService>();
+    
+
+    services.AddSingleton<
+        IGameWorkflowStepExecutor,
+        GameWorkflowStepExecutor>();
+    
     /*
      * Real-device OCR workflow.
      */
