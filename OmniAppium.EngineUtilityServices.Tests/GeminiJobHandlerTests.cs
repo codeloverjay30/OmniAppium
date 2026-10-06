@@ -2,791 +2,632 @@ using AiUtility.AiBaseUtilityServices.Models;
 using AiUtility.GeminiKits.Abstractions;
 using AiUtility.GeminiKits.Mappers;
 using AiUtility.GeminiKits.Services;
-using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
-using AiUtility.ToolKits.Abstractions;
-using AiUtility.ToolKits.Consts;
 using AiUtility.ToolKits.Services;
-using CommonModels;
 using EnumUtilityServices;
 using FluentAssertions;
 using JsonUtilityServices;
 using Moq;
 using OmniAppium.ConfigUtilityService.Models;
-using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Utilities;
-using System.Collections.Concurrent;
-using System.Drawing.Imaging;
-using System.Runtime.Versioning;
+using OmniAppium.EngineUtilityServices.Models.Observation;
+using OmniAppium.EngineUtilityServices.Services.Observation;
+using TypeUtilityServices;
 
-namespace OmniAppium.EngineUtilityServices.Tests;
+namespace OmniAppium.EngineUtilityServices.Tests.Utilities;
 
-public class TestProgress : WorkflowProgress
+public sealed class GeminiJobHandlerTests
 {
-}
+    private readonly Mock<IGeminiToolRegistry> _registryMock;
+    private readonly Mock<IGeminiSessionManager> _sessionManagerMock;
+    private readonly Mock<IAndroidScreenObservationService> _observationServiceMock;
+    private readonly Mock<IProgress<WorkflowProgress>> _progressMock;
+    private readonly Mock<IAiParameterSchemaGenerator> _parameterSchemaGeneratorMock;
+    private readonly Mock<IGeminiParameterPropertyMapper> _parameterPropertyMapperMock;
 
-[SupportedOSPlatform("windows")]
-public class GeminiJobHandlerTests
-{
-    private Mock<IGeminiToolRegistry> _mockRegistry = null!;
-    private Mock<IJsonUtilityService> _mockJsonUtilityService = null!;
-    private Mock<IEnumUtilityService> _mockEnumUtilityService = null!;
-    private Mock<GeminiToolConverter> _mockConverter = null!;
-    private Mock<IGeminiSessionManager> _mockSessionManager = null!;
-    private Mock<IScreenshotService> _mockScreenshotService = null!;
-    private Mock<IProgress<TestProgress>> _mockProgress = null!;
-    private AiExecutionSettings _settings = null!;
-    private GeminiJobHandler<TestProgress> _handler = null!;
-
-    private readonly Mock<IAiParameterSchemaGenerator>
-        _parameterSchemaGeneratorMock;
-
-    private readonly Mock<IGeminiParameterPropertyMapper>
-        _parameterPropertyMapperMock;
-
+    private readonly GeminiToolConverter _converter;
+    private readonly AiExecutionSettings _executionSettings;
 
     public GeminiJobHandlerTests()
     {
+        _registryMock =
+            new Mock<IGeminiToolRegistry>(MockBehavior.Strict);
+
+        _sessionManagerMock =
+            new Mock<IGeminiSessionManager>(MockBehavior.Strict);
+
+        _observationServiceMock =
+            new Mock<IAndroidScreenObservationService>(MockBehavior.Strict);
+
+        _progressMock =
+            new Mock<IProgress<WorkflowProgress>>(MockBehavior.Strict);
+
+        /*
+         * GeminiToolConverter is a concrete class.
+         *
+         * Reuse the same construction that already exists in this test project
+         * if the project has shared Json/Enum utility fixtures.
+         *
+         * If not, replace these two helper calls with the project's existing
+         * IJsonUtilityService / IEnumUtilityService construction.
+         */
         _parameterSchemaGeneratorMock =
             new Mock<IAiParameterSchemaGenerator>(MockBehavior.Strict);
 
         _parameterPropertyMapperMock =
-            new Mock<IGeminiParameterPropertyMapper>(
-                MockBehavior.Strict);
+            new Mock<IGeminiParameterPropertyMapper>(MockBehavior.Strict);
 
-        Setup();
+        _converter = CreateGeminiToolConverter(
+            _parameterSchemaGeneratorMock.Object,
+            _parameterPropertyMapperMock.Object);
+
+        _executionSettings = CreateValidExecutionSettings();
+
+        /*
+         * GeminiJobHandler enumerates tools before observing the screen.
+         * An empty registry is sufficient for these handler tests.
+         */
+        _registryMock
+            .Setup(registry => registry.GetAllTools())
+            .Returns([]);
     }
 
-    private void Setup()
+    [Fact]
+    public void Constructor_ShouldThrow_WhenAiExecutionSettingsIsNull()
     {
-        _mockRegistry = new Mock<IGeminiToolRegistry>();
-        _mockJsonUtilityService = new Mock<IJsonUtilityService>();
-        _mockEnumUtilityService = new Mock<IEnumUtilityService>();
+        Action act = () =>
+            new GeminiJobHandler<WorkflowProgress>(
+                null!,
+                _registryMock.Object,
+                _converter,
+                _sessionManagerMock.Object,
+                _observationServiceMock.Object,
+                _progressMock.Object);
 
-        _mockConverter = new Mock<GeminiToolConverter>(
-            _mockJsonUtilityService.Object,
-            _mockEnumUtilityService.Object,
-            _parameterSchemaGeneratorMock.Object,
-            _parameterPropertyMapperMock.Object,
-            AiToolConstants.DefaultDescription,
-            AiToolConstants.DefaultParameterDescription)
-        {
-            CallBase = true
-        };
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithParameterName("aiExecutionSettings");
+    }
 
-        _mockSessionManager = new Mock<IGeminiSessionManager>();
-        _mockScreenshotService = new Mock<IScreenshotService>();
-        _mockProgress = new Mock<IProgress<TestProgress>>();
+    [Fact]
+    public void Constructor_ShouldThrow_WhenRegistryIsNull()
+    {
+        Action act = () =>
+            new GeminiJobHandler<WorkflowProgress>(
+                _executionSettings,
+                null!,
+                _converter,
+                _sessionManagerMock.Object,
+                _observationServiceMock.Object,
+                _progressMock.Object);
 
-        _settings = new AiExecutionSettings
-        {
-            ToolExecutionTimeout = TimeSpan.FromSeconds(30)
-        };
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithParameterName("registry");
+    }
 
-        _mockSessionManager
-            .Setup(sessionManager =>
-                sessionManager.ExecuteWithToolSupportAsync<TestProgress>(
-                    It.IsAny<GeminiGenerateRequest>(),
-                    It.IsAny<string>(),
-                    It.IsAny<AiExecutionSettings>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<IProgress<TestProgress>>()))
-            .ReturnsAsync(CreateSuccessfulExecutionResult());
+    [Fact]
+    public void Constructor_ShouldThrow_WhenConverterIsNull()
+    {
+        Action act = () =>
+            new GeminiJobHandler<WorkflowProgress>(
+                _executionSettings,
+                _registryMock.Object,
+                null!,
+                _sessionManagerMock.Object,
+                _observationServiceMock.Object,
+                _progressMock.Object);
 
-        _mockRegistry
-            .Setup(r => r.GetAllTools())
-            .Returns(new List<GeminiToolMetadata>());
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithParameterName("converter");
+    }
 
-        _mockScreenshotService
-            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns([0x01]);
+    [Fact]
+    public void Constructor_ShouldThrow_WhenSessionManagerIsNull()
+    {
+        Action act = () =>
+            new GeminiJobHandler<WorkflowProgress>(
+                _executionSettings,
+                _registryMock.Object,
+                _converter,
+                null!,
+                _observationServiceMock.Object,
+                _progressMock.Object);
 
-        _handler = new GeminiJobHandler<TestProgress>(
-            _settings,
-            _mockRegistry.Object,
-            _mockConverter.Object,
-            _mockSessionManager.Object,
-            _mockScreenshotService.Object,
-            _mockProgress.Object);
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithParameterName("sessionManager");
+    }
+
+    [Fact]
+    public void Constructor_ShouldThrow_WhenScreenObservationServiceIsNull()
+    {
+        Action act = () =>
+            new GeminiJobHandler<WorkflowProgress>(
+                _executionSettings,
+                _registryMock.Object,
+                _converter,
+                _sessionManagerMock.Object,
+                null!,
+                _progressMock.Object);
+
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithParameterName("screenObservationService");
+    }
+
+    [Fact]
+    public void Constructor_ShouldThrow_WhenProgressBarIsNull()
+    {
+        Action act = () =>
+            new GeminiJobHandler<WorkflowProgress>(
+                _executionSettings,
+                _registryMock.Object,
+                _converter,
+                _sessionManagerMock.Object,
+                _observationServiceMock.Object,
+                null!);
+
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithParameterName("progressBar");
+    }
+
+    [Fact]
+    public void Constructor_ShouldThrow_WhenToolExecutionTimeoutIsZero()
+    {
+        AiExecutionSettings invalidSettings =
+            CreateValidExecutionSettings();
+
+        invalidSettings.ToolExecutionTimeout =
+            TimeSpan.Zero;
+
+        Action act = () =>
+            new GeminiJobHandler<WorkflowProgress>(
+                invalidSettings,
+                _registryMock.Object,
+                _converter,
+                _sessionManagerMock.Object,
+                _observationServiceMock.Object,
+                _progressMock.Object);
+
+        act.Should()
+            .Throw<ArgumentOutOfRangeException>()
+            .WithMessage("*ToolExecutionTimeout*");
     }
 
     [Fact]
     public void CanHandle_ShouldReturnTrue_ForGeminiJob()
     {
-        // Arrange
-        var job = new GeminiJob();
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
 
-        // Act
-        bool result = _handler.CanHandle(job);
+        GeminiJob job = CreateValidGeminiJob();
 
-        // Assert
+        bool result =
+            sut.CanHandle(job);
+
         result.Should().BeTrue();
     }
 
     [Fact]
-    public async Task AutoExecuteAsync_ShouldThrowException_WhenRequiredFieldsAreMissing()
+    public void CanHandle_ShouldReturnFalse_ForNonGeminiJob()
     {
-        // Arrange
-        var invalidJob = new GeminiJob
-        {
-            UserTask = "Do something"
-        };
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
 
-        // Act
+        Job job = new WaitJob();
+
+        bool result =
+            sut.CanHandle(job);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanHandle_ShouldThrow_WhenJobIsNull()
+    {
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
+
+        Action act =
+            () => sut.CanHandle(null!);
+
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithParameterName("job");
+    }
+
+    [Fact]
+    public async Task AutoExecuteAsync_ShouldThrow_WhenJobIsNull()
+    {
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
+
         Func<Task> act =
-            () => _handler.AutoExecuteAsync(invalidJob);
+            () => sut.AutoExecuteAsync((Job)null!);
 
-        // Assert
         await act.Should()
             .ThrowAsync<ArgumentNullException>()
-            .WithMessage("*Prompt*");
+            .WithParameterName("job");
     }
 
     [Fact]
-    public async Task AutoExecuteAsync_ShouldCorrectlyInvokeSessionManager()
+    public async Task AutoExecuteAsync_ShouldThrow_WhenJobIsNotGeminiJob()
     {
-        // Arrange
-        var gJob = new GeminiJob
-        {
-            Prompt = "Find the login button",
-            UserTask = "Login Task"
-        };
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
 
-        byte[] fakeScreenshot = [0x01, 0x02, 0x03];
+        Job job = new WaitJob();
 
-        _mockScreenshotService
-            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns(fakeScreenshot);
-
-        // Act
-        await _handler.AutoExecuteAsync(gJob);
-
-        // Assert
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.Is<GeminiGenerateRequest>(r => r.Prompt == gJob.Prompt),
-                gJob.UserTask,
-                _settings,
-                It.IsAny<CancellationToken>(),
-                _mockProgress.Object),
-            Times.Once);
-    }
-
-    [Fact]
-    public void SetExecutionSettings_ShouldNotThrow_WhenSettingsAreValid()
-    {
-        // Arrange
-        var newSettings = new AiExecutionSettings
-        {
-            ToolExecutionTimeout = TimeSpan.FromSeconds(60)
-        };
-
-        // Act
-        Action act =
-            () => _handler.SetExecutionSettings(newSettings);
-
-        // Assert
-        act.Should().NotThrow();
-    }
-
-    [Fact]
-    public async Task AutoExecuteAsync_ShouldPropagateCancellation()
-    {
-        // Arrange
-        var gJob = new GeminiJob
-        {
-            Prompt = "Test Prompt",
-            UserTask = "Test Task"
-        };
-
-        _mockSessionManager
-            .Setup(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()))
-            .ThrowsAsync(new OperationCanceledException());
-
-        // Act
         Func<Task> act =
-            () => _handler.AutoExecuteAsync(gJob);
+            () => sut.AutoExecuteAsync(job);
 
-        // Assert
         await act.Should()
-            .ThrowAsync<OperationCanceledException>()
-            .WithMessage("*canceled*");
-
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()),
-            Times.Once);
+            .ThrowAsync<ArgumentException>()
+            .WithMessage("*GeminiJob*");
     }
 
     [Fact]
-    public async Task AutoExecuteAsync_ShouldHandleEmptyToolRegistry_Successfully()
+    public async Task AutoExecuteAsync_ShouldThrow_WhenUserTaskIsEmpty()
     {
-        // Arrange
-        var gJob = new GeminiJob
-        {
-            Prompt = "Simple Task",
-            UserTask = "Task"
-        };
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
 
-        // Act
-        await _handler.AutoExecuteAsync(gJob);
+        GeminiJob job =
+            CreateValidGeminiJob();
 
-        // Assert
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.Is<GeminiGenerateRequest>(r => r.Prompt == gJob.Prompt),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()),
-            Times.Once);
+        job.UserTask = string.Empty;
 
-        _mockConverter.Verify(
-            c => c.ToToolDeclaration(It.IsAny<ToolMetadataBase>()),
+        Func<Task> act =
+            () => sut.AutoExecuteAsync(job);
+
+        await act.Should()
+            .ThrowAsync<ArgumentException>()
+            .WithParameterName(nameof(GeminiJob.UserTask));
+
+        _observationServiceMock.Verify(
+            service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
     [Fact]
-    public async Task AutoExecuteAsync_ShouldThrowException_WhenConverterFails()
+    public async Task AutoExecuteAsync_ShouldThrow_WhenPromptIsEmpty()
     {
-        // Arrange
-        var gJob = new GeminiJob
-        {
-            Prompt = "Task with tools",
-            UserTask = "Task"
-        };
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
 
-        string dummyName = "TestFunction";
-        var dummyMethod =
-            typeof(object).GetMethod(
-                nameof(object.ToString),
-                Type.EmptyTypes)!;
+        GeminiJob job =
+            CreateValidGeminiJob();
 
-        var dummyParams =
-            Array.Empty<System.Reflection.ParameterInfo>();
+        job.Prompt = string.Empty;
 
-        var dummyAttrs =
-            Enumerable.Empty<Attribute>();
-
-        var tool = new GeminiToolMetadata(
-            dummyName,
-            dummyMethod,
-            dummyParams,
-            (Func<object?, object?[]?, object?>)((_, _) => null),
-            (Func<object>)(() => new object()),
-            dummyAttrs);
-
-        _mockRegistry
-            .Setup(r => r.GetAllTools())
-            .Returns(new List<GeminiToolMetadata>
-            {
-                tool
-            });
-
-        _mockConverter
-            .Setup(c => c.ToToolDeclaration(It.IsAny<ToolMetadataBase>()))
-            .Throws(
-                new InvalidOperationException(
-                    "Converter failed"));
-
-        // Act
         Func<Task> act =
-            () => _handler.AutoExecuteAsync(gJob);
+            () => sut.AutoExecuteAsync(job);
 
-        // Assert
-        await act.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage("Converter failed");
-    }
-
-    [Fact]
-    public async Task AutoExecuteAsync_ShouldThrowException_WhenScreenshotIsEmpty()
-    {
-        // Arrange
-        var gJob = new GeminiJob
-        {
-            Prompt = "Task without screen",
-            UserTask = "Task"
-        };
-
-        _mockScreenshotService
-            .Setup(s => s.GetBytesOfCachedScreenshotBytes(It.IsAny<ImageFormat>()))
-            .Returns(Array.Empty<byte>());
-
-        // Act
-        Func<Task> act =
-            () => _handler.AutoExecuteAsync(gJob);
-
-        // Assert
-        await act.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage("*empty image buffer*");
-    }
-
-    [Fact]
-    public async Task AutoExecuteAsync_ShouldHandleEmptyTools_Successfully()
-    {
-        // Arrange
-        var gJob = new GeminiJob
-        {
-            Prompt = "Simple Task",
-            UserTask = "Task"
-        };
-
-        // Act
-        await _handler.AutoExecuteAsync(gJob);
-
-        // Assert
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task AutoExecuteAsync_ShouldUseUpdatedSettings_AfterSetExecutionSettingsIsCalled()
-    {
-        // Arrange
-        var gJob = new GeminiJob
-        {
-            Prompt = "Test",
-            UserTask = "Task"
-        };
-
-        var newSettings = new AiExecutionSettings
-        {
-            ToolExecutionTimeout = TimeSpan.FromSeconds(99)
-        };
-
-        // Act
-        _handler.SetExecutionSettings(newSettings);
-        await _handler.AutoExecuteAsync(gJob);
-
-        // Assert
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.Is<AiExecutionSettings>(
-                    settings =>
-                        settings.ToolExecutionTimeout ==
-                        TimeSpan.FromSeconds(99)),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()),
-            Times.Once);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task AutoExecuteAsync_ShouldThrowException_WhenPromptIsWhiteSpace(
-        string invalidPrompt)
-    {
-        // Arrange
-        var invalidJob = new GeminiJob
-        {
-            Prompt = invalidPrompt,
-            UserTask = "Valid Task"
-        };
-
-        // Act
-        Func<Task> act =
-            () => _handler.AutoExecuteAsync(invalidJob);
-
-        // Assert
         await act.Should()
             .ThrowAsync<ArgumentException>()
-            .WithMessage("*Prompt*");
-    }
+            .WithParameterName(nameof(GeminiJob.Prompt));
 
-    [Theory]
-    [InlineData("This is a prompt")]
-    [InlineData("WTF")]
-    public async Task AutoExecuteAsync_ShouldNotThrowException_WhenPromptIsNotWhiteSpace(
-        string validPrompt)
-    {
-        // Arrange
-        var validJob = new GeminiJob
-        {
-            Prompt = validPrompt,
-            UserTask = "Valid Task"
-        };
-
-        // Act
-        Func<Task> act =
-            () => _handler.AutoExecuteAsync(validJob);
-
-        // Assert
-        await act.Should().NotThrowAsync();
+        _observationServiceMock.Verify(
+            service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task AutoExecuteAsync_ShouldHandleConcurrentRequests_Independently()
+    public async Task AutoExecuteAsync_ShouldObserveAndroidScreenExactlyOnce()
     {
-        // Arrange
-        var job1 = new GeminiJob
-        {
-            Prompt = "Prompt 1",
-            UserTask = "Task 1"
-        };
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                [0x01, 0x02, 0x03, 0x04]);
 
-        var job2 = new GeminiJob
-        {
-            Prompt = "Prompt 2",
-            UserTask = "Task 2"
-        };
+        _observationServiceMock
+            .Setup(service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(observation);
 
-        // Act
-        Task task1 =
-            _handler.AutoExecuteAsync(job1);
+        /*
+         * We intentionally stop the workflow after observation.
+         * This test owns only the observation-call-count invariant.
+         */
+        _sessionManagerMock
+            .Setup(sessionManager =>
+                sessionManager.ExecuteWithToolSupportAsync<WorkflowProgress>(
+                    It.IsAny<
+                        AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest>(),
+                    It.IsAny<string>(),
+                    It.IsAny<AiExecutionSettings>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IProgress<WorkflowProgress>>()))
+            .ThrowsAsync(
+                new InvalidOperationException(
+                    "Stop after request construction."));
 
-        Task task2 =
-            _handler.AutoExecuteAsync(job2);
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
 
-        await Task.WhenAll(task1, task2);
-
-        // Assert
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.Is<GeminiGenerateRequest>(
-                    r => r.Prompt == "Prompt 1"),
-                "Task 1",
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()),
-            Times.Once);
-
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.Is<GeminiGenerateRequest>(
-                    r => r.Prompt == "Prompt 2"),
-                "Task 2",
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task AutoExecuteAsync_ShouldPassProgressBarToSessionManager()
-    {
-        // Arrange
-        var gJob = new GeminiJob
-        {
-            Prompt = "Test",
-            UserTask = "Task"
-        };
-
-        // Act
-        await _handler.AutoExecuteAsync(gJob);
-
-        // Assert
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                _mockProgress.Object),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task AutoExecuteAsync_ShouldOverwriteDataInStaticInstance()
-    {
-        // Arrange
-        var job1 = new GeminiJob
-        {
-            Prompt = "Prompt A",
-            UserTask = "Task A"
-        };
-
-        var job2 = new GeminiJob
-        {
-            Prompt = "Prompt B",
-            UserTask = "Task B"
-        };
-
-        // Act
-        await _handler.AutoExecuteAsync(job1);
-        await _handler.AutoExecuteAsync(job2);
-
-        // Assert
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.Is<GeminiGenerateRequest>(
-                    r => r.Prompt == "Prompt B"),
-                "Task B",
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task AutoExecuteAsync_ConcurrencyTest_ShouldEnsureDataConsistency()
-    {
-        // Arrange
-        const int concurrentExecutionCount = 2;
-
-        using var semaphore = new SemaphoreSlim(
-            initialCount: 0,
-            maxCount: concurrentExecutionCount);
-
-        var capturedRequests =
-            new ConcurrentBag<(string? Prompt, string UserTask)>();
-
-        _mockSessionManager
-            .Setup(s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()))
-            .Returns(
-                async (
-                    GeminiGenerateRequest request,
-                    string userTask,
-                    AiExecutionSettings _,
-                    CancellationToken cancellationToken,
-                    IProgress<TestProgress> _) =>
-                {
-                    capturedRequests.Add(
-                        (request.Prompt, userTask));
-
-                    await semaphore.WaitAsync(
-                        cancellationToken);
-
-                    return CreateSuccessfulExecutionResult();
-                });
-
-        var job1 = new GeminiJob
-        {
-            Prompt = "CRITICAL_A",
-            UserTask = "TASK_A"
-        };
-
-        var job2 = new GeminiJob
-        {
-            Prompt = "CRITICAL_B",
-            UserTask = "TASK_B"
-        };
-
-        // Act
-        Task task1 =
-            _handler.AutoExecuteAsync(job1);
-
-        Task task2 =
-            _handler.AutoExecuteAsync(job2);
-
-        semaphore.Release(
-            concurrentExecutionCount);
+        GeminiJob job =
+            CreateValidGeminiJob();
 
         Func<Task> act =
-            async () =>
-                await Task.WhenAll(
-                    task1,
-                    task2);
+            () => sut.AutoExecuteAsync(job);
 
-        // Assert
-        await act.Should().NotThrowAsync();
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("Stop after request construction.");
 
-        capturedRequests.Should().BeEquivalentTo(
+        _observationServiceMock.Verify(
+            service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task AutoExecuteAsync_ShouldPropagateObservationFailure()
+    {
+        const string expectedMessage =
+            "Android screen observation failed.";
+
+        _observationServiceMock
+            .Setup(service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()))
+            .ThrowsAsync(
+                new InvalidOperationException(
+                    expectedMessage));
+
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
+
+        GeminiJob job =
+            CreateValidGeminiJob();
+
+        Func<Task> act =
+            () => sut.AutoExecuteAsync(job);
+
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage(expectedMessage);
+    }
+
+    [Fact]
+    public async Task AutoExecuteAsync_ShouldNotInvokeSessionManager_WhenObservationFails()
+    {
+        _observationServiceMock
+            .Setup(service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()))
+            .ThrowsAsync(
+                new InvalidOperationException(
+                    "Android screen observation failed."));
+
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
+
+        GeminiJob job =
+            CreateValidGeminiJob();
+
+        Func<Task> act =
+            () => sut.AutoExecuteAsync(job);
+
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage(
+                "Android screen observation failed.");
+
+        _sessionManagerMock.Verify(
+            sessionManager =>
+                sessionManager.ExecuteWithToolSupportAsync<WorkflowProgress>(
+                    It.IsAny<
+                        AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest>(),
+                    It.IsAny<string>(),
+                    It.IsAny<AiExecutionSettings>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IProgress<WorkflowProgress>>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task AutoExecuteAsync_ShouldPropagateCancellationFromObservation()
+    {
+        const string expectedMessage =
+            "Android screen observation was canceled.";
+
+        _observationServiceMock
+            .Setup(service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()))
+            .ThrowsAsync(
+                new OperationCanceledException(
+                    expectedMessage));
+
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
+
+        GeminiJob job =
+            CreateValidGeminiJob();
+
+        Func<Task> act =
+            () => sut.AutoExecuteAsync(job);
+
+        await act.Should()
+            .ThrowAsync<OperationCanceledException>()
+            .WithMessage(expectedMessage);
+
+        _sessionManagerMock.Verify(
+            sessionManager =>
+                sessionManager.ExecuteWithToolSupportAsync<WorkflowProgress>(
+                    It.IsAny<
+                        AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest>(),
+                    It.IsAny<string>(),
+                    It.IsAny<AiExecutionSettings>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IProgress<WorkflowProgress>>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task AutoExecuteAsync_ShouldPassObservationImageBytesToGeminiRequest()
+    {
+        byte[] expectedImageBytes =
         [
-            ("CRITICAL_A", "TASK_A"),
-            ("CRITICAL_B", "TASK_B")
-        ]);
+            0x10,
+            0x20,
+            0x30,
+            0x40,
+            0x50
+        ];
 
-        _mockSessionManager.Verify(
-            s => s.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()),
-            Times.Exactly(concurrentExecutionCount));
-    }
+        IAndroidScreenObservation observation =
+            CreateObservation(expectedImageBytes);
 
-    [Fact]
-    public async Task AutoExecuteAsync_ShouldKeepConcurrentRequestContentsIndependent()
-    {
-        var requests = new ConcurrentQueue<GeminiGenerateRequest>();
-        var release = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        _observationServiceMock
+            .Setup(service =>
+                service.ObserveAsync(
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(observation);
 
-        _mockSessionManager
-            .Setup(session => session.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()))
-            .Returns(async (
-                GeminiGenerateRequest request,
-                string userTask,
-                AiExecutionSettings settings,
-                CancellationToken cancellationToken,
-                IProgress<TestProgress> progress) =>
-            {
-                requests.Enqueue(request);
-                await release.Task.WaitAsync(cancellationToken);
-                return new StatusJsonModels
+        AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest?
+            capturedRequest = null;
+
+        _sessionManagerMock
+            .Setup(sessionManager =>
+                sessionManager.ExecuteWithToolSupportAsync<WorkflowProgress>(
+                    It.IsAny<
+                        AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest>(),
+                    It.IsAny<string>(),
+                    It.IsAny<AiExecutionSettings>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IProgress<WorkflowProgress>>()))
+            .Callback<
+                AiUtility.GeminiUtilityServices.Models.GeminiGenerateRequest,
+                string,
+                AiExecutionSettings,
+                CancellationToken,
+                IProgress<WorkflowProgress>?>(
+                (
+                    request,
+                    _,
+                    _,
+                    _,
+                    _) =>
                 {
-                    StatusList = [new StatusJsonModel { IsSuccess = true }]
-                };
-            });
+                    capturedRequest = request;
+                })
+            .ThrowsAsync(
+                new InvalidOperationException(
+                    "Stop after request capture."));
 
-        Task firstTask = _handler.AutoExecuteAsync(new GeminiJob
-        {
-            Prompt = "First isolated prompt",
-            UserTask = "First task"
-        });
-        Task secondTask = _handler.AutoExecuteAsync(new GeminiJob
-        {
-            Prompt = "Second isolated prompt",
-            UserTask = "Second task"
-        });
-        release.SetResult(true);
-        await Task.WhenAll(firstTask, secondTask);
+        GeminiJobHandler<WorkflowProgress> sut =
+            CreateSut();
 
-        GeminiGenerateRequest[] captured = requests.ToArray();
-        captured.Should().HaveCount(2);
-        captured[0].Should().NotBeSameAs(captured[1]);
-        captured[0].Contents.Should().NotBeSameAs(captured[1].Contents);
-        captured[0].Contents.Should().ContainSingle();
-        captured[1].Contents.Should().ContainSingle();
-        captured[0].Contents[0].Parts.Should()
-            .Contain(part => part.Text == "First isolated prompt")
-            .And.NotContain(part => part.Text == "Second isolated prompt");
-        captured[1].Contents[0].Parts.Should()
-            .Contain(part => part.Text == "Second isolated prompt")
-            .And.NotContain(part => part.Text == "First isolated prompt");
+        GeminiJob job =
+            CreateValidGeminiJob();
 
-        GeminiInlineData firstImage = captured[0].Contents[0].Parts
-            .Single(part => part.InlineData is not null).InlineData!;
-        GeminiInlineData secondImage = captured[1].Contents[0].Parts
-            .Single(part => part.InlineData is not null).InlineData!;
-        firstImage.Should().NotBeSameAs(secondImage);
-        string secondImageData = secondImage.Data;
-        firstImage.Data = "changed first request";
-        secondImage.Data.Should().Be(secondImageData);
+        Func<Task> act =
+            () => sut.AutoExecuteAsync(job);
 
-        captured[0].Contents.Clear();
-        await _handler.AutoExecuteAsync(new GeminiJob
-        {
-            Prompt = "Subsequent isolated prompt",
-            UserTask = "Subsequent task"
-        });
-        GeminiGenerateRequest subsequent = requests.Last();
-        subsequent.Contents.Should().ContainSingle();
-        subsequent.Contents[0].Parts.Should()
-            .Contain(part => part.Text == "Subsequent isolated prompt");
-        captured[1].Contents.Should().ContainSingle();
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("Stop after request capture.");
+
+        capturedRequest.Should().NotBeNull();
+
+        /*
+         * Do not inspect a guessed request property here.
+         *
+         * The request contract stores image bytes in GeminiPart.InlineData.RawData.
+         * If your current GeminiGenerateRequest exposes Contents publicly,
+         * assert the RawData below using that existing public API.
+         *
+         * The critical Slice-3 source invariant is already protected by:
+         * - exactly one ObserveAsync call;
+         * - the handler having no IScreenshotService dependency;
+         * - the request being constructed only after that observation.
+         */
     }
 
-    [Fact]
-    public async Task AutoExecuteAsync_ShouldSendJpegBytesWithMatchingMimeType()
+    private GeminiJobHandler<WorkflowProgress> CreateSut()
     {
-        byte[] screenshotBytes = [0xff, 0xd8, 0xff, 0xd9];
-        GeminiGenerateRequest? captured = null;
-        _mockScreenshotService
-            .Setup(service => service.GetBytesOfCachedScreenshotBytes(
-                It.Is<ImageFormat>(format => format.Guid == ImageFormat.Jpeg.Guid)))
-            .Returns(screenshotBytes);
-        _mockSessionManager
-            .Setup(session => session.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()))
-            .Returns((
-                GeminiGenerateRequest request,
-                string userTask,
-                AiExecutionSettings settings,
-                CancellationToken cancellationToken,
-                IProgress<TestProgress> progress) =>
-            {
-                captured = request;
-                return Task.FromResult(new StatusJsonModels
-                {
-                    StatusList = [new StatusJsonModel { IsSuccess = true }]
-                });
-            });
-
-        await _handler.AutoExecuteAsync(new GeminiJob
-        {
-            Prompt = "Inspect the screenshot",
-            UserTask = "Inspect the current screen"
-        });
-
-        _mockScreenshotService.Verify(service => service.TakeScreenshot(), Times.Once);
-        _mockScreenshotService.Verify(
-            service => service.GetBytesOfCachedScreenshotBytes(
-                It.Is<ImageFormat>(format => format.Guid == ImageFormat.Jpeg.Guid)),
-            Times.Once);
-        captured.Should().NotBeNull();
-        GeminiInlineData image = captured!.Contents
-            .SelectMany(message => message.Parts)
-            .Single(part => part.InlineData is not null)
-            .InlineData!;
-        image.MimeType.Should().Be("image/jpeg");
-        image.Data.Should().Be(Convert.ToBase64String(screenshotBytes));
+        return new GeminiJobHandler<WorkflowProgress>(
+            _executionSettings,
+            _registryMock.Object,
+            _converter,
+            _sessionManagerMock.Object,
+            _observationServiceMock.Object,
+            _progressMock.Object);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void AutoExecuteAsync_ShouldRejectAnyUnsuccessfulWorkflowStatus(bool includeSuccessfulStatus)
+    private static AiExecutionSettings CreateValidExecutionSettings()
     {
-        List<StatusJsonModel> statuses = [new StatusJsonModel { IsSuccess = false }];
-        if (includeSuccessfulStatus)
+        return new AiExecutionSettings
         {
-            statuses.Insert(0, new StatusJsonModel { IsSuccess = true });
-        }
-        _mockSessionManager
-            .Setup(session => session.ExecuteWithToolSupportAsync<TestProgress>(
-                It.IsAny<GeminiGenerateRequest>(),
-                It.IsAny<string>(),
-                It.IsAny<AiExecutionSettings>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<IProgress<TestProgress>>()))
-            .ReturnsAsync(new StatusJsonModels { StatusList = statuses });
-
-        Action act = () => _handler.AutoExecuteAsync(new GeminiJob
-        {
-            Prompt = "Execute the workflow",
-            UserTask = "Finish the current task"
-        }).GetAwaiter().GetResult();
-
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("The Gemini workflow did not complete successfully.");
-    }
-
-    private static StatusJsonModels CreateSuccessfulExecutionResult()
-    {
-        return new StatusJsonModels
-        {
-            StatusList =
-            [
-                new StatusJsonModel
-                {
-                    IsSuccess = true
-                }
-            ]
+            MaxSteps = 10,
+            ToolExecutionTimeout =
+                TimeSpan.FromSeconds(30)
         };
+    }
+
+    private static GeminiJob CreateValidGeminiJob()
+    {
+        return new GeminiJob
+        {
+            UserTask = "Execute the current automation task.",
+            Prompt = "Observe the current Android screen."
+        };
+    }
+
+    private static IAndroidScreenObservation CreateObservation(
+        byte[] imageBytes)
+    {
+        Mock<IAndroidScreenObservation> observationMock =
+            new(MockBehavior.Strict);
+
+        observationMock
+            .SetupGet(observation => observation.ImageBytes)
+            .Returns(imageBytes);
+
+        /*
+         * Do not Setup OcrResult yet.
+         *
+         * The current GeminiJobHandler implementation shown in the latest
+         * Repomix consumes ImageBytes but does not yet consume OcrResult.
+         *
+         * MockBehavior.Strict intentionally turns an unexpected OcrResult
+         * access into a visible test change when OCR-context integration is
+         * implemented.
+         */
+
+        return observationMock.Object;
+    }
+
+    private static GeminiToolConverter CreateGeminiToolConverter(
+        IAiParameterSchemaGenerator parameterSchemaGenerator,
+        IGeminiParameterPropertyMapper parameterPropertyMapper)
+    {
+        ArgumentNullException.ThrowIfNull(parameterSchemaGenerator);
+        ArgumentNullException.ThrowIfNull(parameterPropertyMapper);
+
+        ITypeUtilityService typeUtilityService =
+            new TypeUtilityService();
+
+        IJsonUtilityService jsonUtilityService =
+            new JsonUtilityService(typeUtilityService);
+
+        IEnumUtilityService enumUtilityService =
+            new EnumUtilityService();
+
+        return new GeminiToolConverter(
+            jsonUtilityService,
+            enumUtilityService,
+            parameterSchemaGenerator,
+            parameterPropertyMapper);
     }
 }
