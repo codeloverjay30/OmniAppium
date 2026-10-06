@@ -12,8 +12,9 @@ using OmniAppium.EngineUtilityServices.Services.Observation;
 namespace OmniAppium.EngineUtilityService.Utilities;
 
 /// <summary>
-/// Handles Gemini-powered automation jobs by consuming an atomic Android
-/// screen observation.
+/// Handles Gemini automation jobs by acquiring a single atomic Android screen
+/// observation and executing the Gemini workflow with the captured image and
+/// OCR context.
 /// </summary>
 /// <typeparam name="TProgress">
 /// The workflow progress model used to report AI execution progress.
@@ -79,7 +80,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     }
 
     /// <summary>
-    /// Updates the AI execution settings.
+    /// Updates the AI execution settings used by subsequent Gemini jobs.
     /// </summary>
     /// <param name="aiExecutionSettings">
     /// The new AI execution settings.
@@ -98,10 +99,11 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     /// Determines whether this handler can execute the specified job.
     /// </summary>
     /// <param name="job">
-    /// The automation job.
+    /// The automation job to inspect.
     /// </param>
     /// <returns>
-    /// <see langword="true"/> when the job is a <see cref="GeminiJob"/>.
+    /// <see langword="true"/> when the job is a <see cref="GeminiJob"/>;
+    /// otherwise, <see langword="false"/>.
     /// </returns>
     public bool CanHandle(Job job)
     {
@@ -111,14 +113,20 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     }
 
     /// <summary>
-    /// Executes the specified automation job.
+    /// Executes the specified automation job when it is a Gemini job.
     /// </summary>
     /// <param name="job">
-    /// The automation job.
+    /// The automation job to execute.
     /// </param>
     /// <returns>
     /// A task representing the asynchronous operation.
     /// </returns>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="job"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="job"/> is not a <see cref="GeminiJob"/>.
+    /// </exception>
     public Task AutoExecuteAsync(Job job)
     {
         ArgumentNullException.ThrowIfNull(job);
@@ -134,15 +142,25 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     }
 
     /// <summary>
-    /// Executes the specified Gemini automation job using a single atomic
-    /// Android screen observation.
+    /// Executes the specified Gemini automation job using one atomic Android
+    /// screen observation for both the screenshot and OCR context.
     /// </summary>
     /// <param name="gJob">
-    /// The Gemini automation job.
+    /// The Gemini automation job to execute.
     /// </param>
     /// <returns>
     /// A task representing the asynchronous AI workflow.
     /// </returns>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="gJob"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when the user task or prompt is empty or consists only of
+    /// white-space characters.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the Gemini workflow does not complete successfully.
+    /// </exception>
     public async Task AutoExecuteAsync(
         GeminiJob gJob)
     {
@@ -166,7 +184,8 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
         using CancellationTokenSource cts =
             new(_aiExecutionSettings.ToolExecutionTimeout);
 
-        CancellationToken cancellationToken = cts.Token;
+        CancellationToken cancellationToken =
+            cts.Token;
 
         IAndroidScreenObservation observation =
             await _screenObservationService
@@ -175,26 +194,24 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var request = DefaultRequest.DeepClone();
+        GeminiGenerateRequest request =
+            DefaultRequest.DeepClone();
 
         request.SetPrompt(gJob.Prompt);
 
+        /*
+         * The screenshot and OCR context intentionally originate from the
+         * exact same observation instance. Do not reacquire the screen or
+         * invoke OCR independently in this handler.
+         */
         request.AddUserMessage(
             request.Prompt,
             observation.ImageBytes.ToArray(),
             "image/jpeg");
 
-        /*
-         * Slice 3 boundary:
-         *
-         * Both screenshot and OCR context MUST originate from this exact
-         * observation instance.
-         *
-         * Do not acquire another screenshot or invoke OCR directly here.
-         *
-         * OCR context injection must use the existing Gemini request contract.
-         * Do not invent a new Planner/ExecutionScope/AiUtility contract here.
-         */
+        AddOcrContext(
+            request,
+            observation);
 
         var executionResult =
             await _sessionManager
@@ -214,11 +231,46 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     }
 
     /// <summary>
+    /// Adds OCR text from the supplied screen observation to the Gemini request
+    /// when meaningful OCR text is available.
+    /// </summary>
+    /// <param name="request">
+    /// The Gemini request receiving the OCR context.
+    /// </param>
+    /// <param name="observation">
+    /// The atomic Android screen observation containing the OCR result.
+    /// </param>
+    private static void AddOcrContext(
+        GeminiGenerateRequest request,
+        IAndroidScreenObservation observation)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(observation);
+
+        string ocrText =
+            observation.OcrResult.Text;
+
+        if (string.IsNullOrWhiteSpace(ocrText))
+        {
+            return;
+        }
+
+        request.AddUserMessage(
+            ocrText.AsMemory());
+    }
+
+    /// <summary>
     /// Validates the supplied AI execution settings.
     /// </summary>
     /// <param name="settings">
     /// The AI execution settings.
     /// </param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="settings"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when the tool execution timeout is not greater than zero.
+    /// </exception>
     private static void ValidateExecutionSettings(
         AiExecutionSettings settings)
     {
