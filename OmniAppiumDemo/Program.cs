@@ -1,7 +1,9 @@
 #define DEVELOPING
 #define IS_LOGGING
+#define GEMINI_READ_ONLY_SMOKE_TEST
 // #define AUTO_EXECUTE_TASKS
 
+using AiUtility.AiBaseUtilityServices.Models;
 using AiUtility.AiBaseUtilityServices.Services;
 using AiUtility.Configurations;
 using AiUtility.GeminiKits.Abstractions;
@@ -446,17 +448,142 @@ ISemaphoreSlimService semaphoreSlimService =
 ITypeUtilityService typeUtilityService =
     new TypeUtilityService();
 
-    var services =
-        new ServiceCollection();
+IJsonUtilityService jsonUtilityService =
+    new JsonUtilityService(
+        typeUtilityService);
 
-    services.AddOmniAppiumRuntime(
+IEnumUtilityService enumUtilityService =
+    new EnumUtilityService();
+
+IExpressionTreeUtilityService expressionTreeUtilityService =
+    new ExpressionTreeUtilityService();
+
+IReflectionUtilityService reflectionUtilityService =
+    new ReflectionUtilityService(
+        expressionTreeUtilityService);
+
+IGeminiToolRegistry geminiToolRegistry =
+    new GeminiToolRegistry(
+        reflectionUtilityService);
+
+IAiParameterSchemaGenerator parameterSchemaGenerator =
+    new GeminiSchemaGenerator(
+        jsonUtilityService,
+        typeUtilityService);
+
+IGeminiParameterPropertyMapper parameterPropertyMapper =
+    new GeminiParameterPropertyMapper();
+
+var geminiToolConverter =
+    new GeminiToolConverter(
+        jsonUtilityService,
+        enumUtilityService,
+        parameterSchemaGenerator,
+        parameterPropertyMapper);
+
+IGeminiToolService geminiToolService =
+    new GeminiToolService(
+        geminiToolRegistry,
+        geminiToolConverter,
         loggerFactoryService,
-        screenshotService);
+        true);
 
-    /*
-     * ClickService and WaitService are already initialized with
-     * driver-specific runtime state, so register the existing instances.
-     */
+IAiConfigService aiConfigService =
+    new AiConfigService
+    {
+        AiConfigPath =
+            geminiSecureConfigPath
+    };
+
+string geminiApiKey =
+    aiConfigService.GetApiKey();
+
+ArgumentException.ThrowIfNullOrWhiteSpace(
+    geminiApiKey);
+
+var httpClient =
+    new HttpClient();
+
+IGeminiApiClient geminiApiClient =
+    new GeminiApiClient(
+        loggerFactoryService,
+        true)
+    {
+        HttpClient =
+            httpClient,
+
+        ApiKey =
+            geminiApiKey,
+
+        ApiOptions =
+            geminiApiOptions
+    };
+
+IGeminiConversationManager geminiConversationManager =
+    new GeminiConversationManager(
+        loggerFactoryService,
+        geminiApiClient);
+
+IGeminiToolExecutor geminiToolExecutor =
+    new GeminiToolExecutor(
+        geminiToolRegistry,
+        typeUtilityService);
+
+/*
+ * Register actual Appium services as Gemini tools.
+ */
+
+geminiToolRegistry.Register<ClickService>(
+    () => clickService);
+
+geminiToolRegistry.Register<WaitService>(
+    () => waitService);
+
+// ------------------------------------------------------------
+// Keep the rest of your EXISTING Gemini infrastructure here.
+//
+// For example:
+// - GeminiToolService
+// - GeminiApiClient
+// - GeminiConversationManager
+// - GeminiToolExecutor
+// - GeminiSessionManager
+//
+// Do not replace their existing constructors merely to match
+// this example.
+// ------------------------------------------------------------
+
+IGeminiSessionManager geminiSessionManager =
+    new GeminiSessionManager(
+        loggerFactoryService,
+        geminiConversationManager,
+        geminiToolService,
+        geminiToolExecutor,
+        semaphoreSlimService);
+
+IProgress<WorkflowProgress> workflowProgress =
+    new Progress<WorkflowProgress>(
+        progress =>
+        {
+#if IS_LOGGING
+
+            logger.LogInformation(
+                "Gemini workflow progress: {Progress}",
+                progress);
+
+#endif
+        });
+
+// Register the already-created Gemini runtime dependencies
+// and GeminiJobHandler.
+services.AddGeminiAutomation(
+    aiExecutionSettings,
+    geminiToolRegistry,
+    geminiToolConverter,
+    geminiSessionManager,
+    workflowProgress);
+
+#endif
 
     services.AddSingleton<
         IAndroidScreenOcrService,
@@ -877,47 +1004,42 @@ ITypeUtilityService typeUtilityService =
 
 #endif
 
-    GameWorkflowStep weeklyWorkflowStep =
-        new(
-            ClickText:
-                "週常",
+// ↓↓↓ 這整段都是要新增的 ↓↓↓
 
-            VerificationTexts:
-            [
-                "日常",
-                "週常",
-                "成就",
-                "使用25次快速掛機",
-                "演武大會獲勝40次"
-            ],
+#if GEMINI_READ_ONLY_SMOKE_TEST
 
-            ClickTimeout:
-                TimeSpan.FromSeconds(30),
+IGeminiJobHandler geminiJobHandler =
+    serviceProvider.GetRequiredService<IGeminiJobHandler>();
 
-            VerificationTimeout:
-                TimeSpan.FromSeconds(10));
+var smokeTestJob =
+    new GeminiJob
+    {
+        JobName = "GeminiReadOnlyScreenObservationSmokeTest",
+        UserTask =
+            """
+            Observe and describe the current Android screen.
+            Do not click, tap, swipe, type, navigate, or invoke any tool.
+            """,
+        Prompt =
+            """
+            This is a read-only integration smoke test.
 
-#if IS_LOGGING
+            Inspect the supplied Android screen image and briefly describe
+            what is currently visible.
 
-    logger.LogInformation(
-        "Executing OCR workflow: Click {ClickText} and verify [{VerificationTexts}]",
-        weeklyWorkflowStep.ClickText,
-        string.Join(
-            ", ",
-            weeklyWorkflowStep.VerificationTexts));
+            Do not perform any action on the device.
+            Do not invoke tools.
 
-#endif
+            Return only a short description of the visible screen.
+            """
+    };
 
-    await gameWorkflowStepExecutor
-        .ExecuteAsync(
-            weeklyWorkflowStep);
-
-#if IS_LOGGING
-
-    logger.LogInformation(
-        "OCR workflow completed successfully.");
+await geminiJobHandler.AutoExecuteAsync(
+    smokeTestJob);
 
 #endif
+
+    // ↑↑↑ 新增到這裡 ↑↑↑
 
     /*
      * Job handlers that wrap runtime-owned Appium services.
