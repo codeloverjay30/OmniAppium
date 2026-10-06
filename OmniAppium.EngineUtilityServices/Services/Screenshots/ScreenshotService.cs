@@ -33,6 +33,7 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
     {
         private readonly ILogger _logger = loggerFactoryService.Logger;
         private readonly bool _toLogWhenSuccess = toLogWhenSuccess;
+        private readonly object _screenshotStateSync = new();
 
         /// <summary>
         /// Logs a successful screenshot save.
@@ -53,30 +54,77 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
         public required AndroidDriver Driver { get; init; }
 
         private OpenQA.Selenium.Screenshot? _rawScreenshot;
-        public  OpenQA.Selenium.Screenshot? Image => _rawScreenshot;
-
-        /// <summary>
-        /// Cached Bitmap of Raw screenshot <see cref="_rawScreenshot"/>
-        /// </summary>
         private Bitmap? _fullBitmap;
+        private Bitmap? _croppedBitmap;
+        private bool _hasBeenCropped;
+
 
         /// <summary>
-        /// Cached Bitmap of cropped screenshot
+        /// Gets the currently cached raw screenshot.
         /// </summary>
-        private Bitmap? _croppedBitmap;
-        public Bitmap? CroppedImage => _croppedBitmap;
-        public bool HasBeenCropped { get; private set; } = false;
+        public OpenQA.Selenium.Screenshot? Image
+        {
+            get
+            {
+                lock (_screenshotStateSync)
+                {
+                    return _rawScreenshot;
+                }
+            }
+        }
+
         /// <summary>
-        /// Captures a fresh screenshot from the current Appium driver session.
+        /// Gets the currently cached cropped image.
         /// </summary>
+        public Bitmap? CroppedImage
+        {
+            get
+            {
+                lock (_screenshotStateSync)
+                {
+                    return _croppedBitmap;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets whether the cached screenshot has been cropped.
+        /// </summary>
+        public bool HasBeenCropped
+        {
+            get
+            {
+                lock (_screenshotStateSync)
+                {
+                    return _hasBeenCropped;
+                }
+            }
+        }
+
+
+        /// <inheritdoc/>
         /// <exception cref="InvalidOperationException">
         /// Thrown when the driver fails to return a screenshot.
         /// </exception>
         public void TakeScreenshot()
         {
-            ClearBitmaps();
+            lock (_screenshotStateSync)
+            {
+                TakeScreenshotCore();
+            }
+        }
 
-            var screenshot =
+        /// <summary>
+        /// Captures a fresh screenshot while the caller owns the screenshot-state lock.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the driver fails to return a screenshot.
+        /// </exception>
+        private void TakeScreenshotCore()
+        {
+            ClearBitmapsCore();
+
+            OpenQA.Selenium.Screenshot? screenshot =
                 Driver.GetScreenshot();
 
             if (screenshot is null)
@@ -85,53 +133,106 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
                     "The Appium driver returned a null screenshot.");
             }
 
-            if (screenshot.AsByteArray is not { Length: > 0 })
+            byte[] rawBytes = screenshot.AsByteArray;
+
+            if (rawBytes.Length == 0)
             {
                 throw new InvalidOperationException(
-                    "The Appium driver returned an empty screenshot.");
+                    "The captured screenshot contains no image data.");
             }
 
-            _rawScreenshot =
-                screenshot;
-
-            HasBeenCropped =
-                false;
+            _rawScreenshot = screenshot;
+            _hasBeenCropped = false;
         }
 
-
-        /// <summary>
-        /// Saves the cached cropped image in the specified format.
-        /// </summary>
-        /// <param name="filename">The destination file name.</param>
-        /// <param name="imageFormat">The image format, or null to use PNG.</param>
+        /// <inheritdoc/>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the screenshot cannot be captured or contains no image data.
+        /// </exception>
         [SupportedOSPlatform("windows")]
-        [RequiresRuntime(6,1, "WINDOWS")]
-        public void SaveCroppedImage(string filename , ImageFormat? imageFormat = null)
+        [RequiresRuntime(6, 1, "WINDOWS")]
+        public byte[] CaptureScreenshotBytes(
+            ImageFormat? imageFormat = null)
         {
-            ArgumentNullException.ThrowIfNull(_croppedBitmap);
-            var format = imageFormat ?? ImageFormat.Png;
-            ExecuteWithLogging(filename , () => _croppedBitmap.Save(filename , format));
+            lock (_screenshotStateSync)
+            {
+                TakeScreenshotCore();
+
+                return GetBytesOfCachedScreenshotBytesCore(
+                    imageFormat);
+            }
         }
 
+        /// <inheritdoc/>
+        [SupportedOSPlatform("windows")]
+        [RequiresRuntime(6, 1, "WINDOWS")]
+        public void SaveCroppedImage(
+            string filename,
+            ImageFormat? imageFormat = null)
+        {
+            lock (_screenshotStateSync)
+            {
+                SaveCroppedImageCore(
+                    filename,
+                    imageFormat);
+            }
+        }
+
+
         /// <summary>
-        /// Saves the cached raw screenshot.
+        /// Saves the cached cropped image while the caller owns the screenshot-state lock.
         /// </summary>
-        /// <param name="filename">The destination file name.</param>
+        /// <param name="filename">
+        /// The destination file name.
+        /// </param>
+        /// <param name="imageFormat">
+        /// The image format, or null to use PNG.
+        /// </param>
+        private void SaveCroppedImageCore(
+            string filename,
+            ImageFormat? imageFormat)
+        {
+            ArgumentNullException.ThrowIfNull(
+                _croppedBitmap);
+
+            ImageFormat format =
+                imageFormat ?? ImageFormat.Png;
+
+            ExecuteWithLogging(
+                filename,
+                () => _croppedBitmap.Save(
+                    filename,
+                    format));
+        }
+
+
+        /// <inheritdoc/>
         public void SaveImage(string filename)
         {
             ArgumentNullException.ThrowIfNull(_rawScreenshot);
             ExecuteWithLogging(filename , () => _rawScreenshot.SaveAsFile(filename));
         }
 
-        /// <summary>
-        /// Crops the currently captured screenshot to the specified area.
-        /// </summary>
-        /// <param name="area">
-        /// The rectangular area to crop.
-        /// </param>
+        /// <inheritdoc/>
         [SupportedOSPlatform("windows")]
         [RequiresRuntime(6, 1, "WINDOWS")]
         public void CropScreenshot(
+            System.Drawing.Rectangle area)
+        {
+            lock (_screenshotStateSync)
+            {
+                CropScreenshotCore(area);
+            }
+        }
+
+
+        /// <summary>
+        /// Crops the cached screenshot while the caller owns the screenshot-state lock.
+        /// </summary>
+        /// <param name="area">
+        /// The rectangular area to retain.
+        /// </param>
+        private void CropScreenshotCore(
             System.Drawing.Rectangle area)
         {
             ArgumentNullException.ThrowIfNull(
@@ -140,16 +241,16 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
 
             if (_fullBitmap is null)
             {
+                byte[] rawBytes =
+                    _rawScreenshot.AsByteArray;
+
                 using var stream =
                     new MemoryStream(
-                        _rawScreenshot.AsByteArray,
+                        rawBytes,
                         writable: false);
 
-                using var sourceBitmap =
-                    new Bitmap(stream);
-
                 _fullBitmap =
-                    new Bitmap(sourceBitmap);
+                    new Bitmap(stream);
             }
 
             _croppedBitmap?.Dispose();
@@ -159,66 +260,67 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
                     area,
                     _fullBitmap.PixelFormat);
 
-            HasBeenCropped =
-                true;
+            _hasBeenCropped = true;
         }
 
-        /// <summary>
-        /// Crops the cached screenshot to the configured rectangle.
-        /// </summary>
-        /// <param name="area">The rectangular area to retain.</param>
+
+        /// <inheritdoc/>
         public void CropScreenshot(OmniRectangle area)
         {
-            Rectangle rectangle = area.ToSystemDrawing();
+            ArgumentNullException.ThrowIfNull(area);
+
+            System.Drawing.Rectangle rectangle =
+                area.ToSystemDrawing();
             CropScreenshot(rectangle);
+    
         }
 
-        /// <summary>
-        /// Captures a screenshot, crops it, and saves the cropped image.
-        /// </summary>
-        /// <param name="area">The rectangular area to retain.</param>
-        /// <param name="filename">The destination file name.</param>
-        /// <param name="imageFormat">The image format, or null to use PNG.</param>
-        public void TakeAndSaveScreenshot(System.Drawing.Rectangle area , string filename , ImageFormat? imageFormat = null)
+        /// <inheritdoc/>
+        public void TakeAndSaveScreenshot(
+            System.Drawing.Rectangle area,
+            string filename,
+            ImageFormat? imageFormat = null)
         {
-            TakeScreenshot();
-            CropScreenshot(area);
-            SaveCroppedImage(filename , imageFormat);
+            lock (_screenshotStateSync)
+            {
+                TakeScreenshotCore();
+                CropScreenshotCore(area);
+                SaveCroppedImageCore(
+                    filename,
+                    imageFormat);
+            }
         }
 
-        /// <summary>
-        /// Captures a screenshot, crops it, and saves the cropped image.
-        /// </summary>
-        /// <param name="area">The rectangular area to retain.</param>
-        /// <param name="filename">The destination file name.</param>
-        /// <param name="imageFormat">The image format, or null to use PNG.</param>
-        public void TakeAndSaveScreenshot(OmniRectangle area , string filename , ImageFormat? imageFormat = null)
+        /// <inheritdoc/>
+        public void TakeAndSaveScreenshot(
+            OmniRectangle area,
+            string filename,
+            ImageFormat? imageFormat = null)
         {
-            TakeScreenshot();
-            CropScreenshot(area);
-            SaveCroppedImage(filename , imageFormat);
+            ArgumentNullException.ThrowIfNull(area);
+
+            System.Drawing.Rectangle rectangle =
+                area.ToSystemDrawing();
+
+            TakeAndSaveScreenshot(
+                rectangle,
+                filename,
+                imageFormat);
         }
 
-        /// <summary>
-        /// Captures and saves a fresh screenshot.
-        /// </summary>
-        /// <param name="filename">The destination file name.</param>
-        public void TakeAndSaveScreenshot(string filename)
+
+        /// <inheritdoc/>
+        public void TakeAndSaveScreenshot(
+            string filename)
         {
-            TakeScreenshot();
-            SaveImage(filename);
+            lock (_screenshotStateSync)
+            {
+                TakeScreenshotCore();
+                SaveImage(filename);
+            }
         }
 
-        /// <summary>
-        /// Gets the cached screenshot as an image byte array.
-        /// A new screenshot is captured when no cached raw screenshot exists.
-        /// </summary>
-        /// <param name="imageFormat">
-        /// The image format to return. PNG is used when no format is specified.
-        /// </param>
-        /// <returns>
-        /// The screenshot encoded as an image byte array.
-        /// </returns>
+        /// <inheritdoc/>
         /// <exception cref="InvalidOperationException">
         /// Thrown when a screenshot cannot be captured or contains no image data.
         /// </exception>
@@ -227,32 +329,56 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
         public byte[] GetBytesOfCachedScreenshotBytes(
             ImageFormat? imageFormat = null)
         {
-            var format =
-                imageFormat ?? ImageFormat.Png;
-
-            if (_rawScreenshot is null)
+            lock (_screenshotStateSync)
             {
-                TakeScreenshot();
-            }
+                if (_rawScreenshot is null)
+                {
+                    TakeScreenshotCore();
+                }
 
+                return GetBytesOfCachedScreenshotBytesCore(
+                    imageFormat);
+            }
+        }
+
+
+        /// <summary>
+        /// Returns encoded bytes for the cached screenshot while the caller owns
+        /// the screenshot-state lock.
+        /// </summary>
+        /// <param name="imageFormat">
+        /// The image format to return. PNG is used when no format is specified.
+        /// </param>
+        /// <returns>
+        /// The encoded screenshot bytes.
+        /// </returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the cached screenshot is unavailable or contains no image data.
+        /// </exception>
+        private byte[] GetBytesOfCachedScreenshotBytesCore(
+            ImageFormat? imageFormat)
+        {
             if (_rawScreenshot is null)
             {
                 throw new InvalidOperationException(
                     "A screenshot could not be captured from the Appium driver.");
             }
 
-            var rawBytes =
+            byte[] rawBytes =
                 _rawScreenshot.AsByteArray;
 
-            if (rawBytes is null || rawBytes.Length == 0)
+            if (rawBytes.Length == 0)
             {
                 throw new InvalidOperationException(
                     "The captured screenshot contains no image data.");
             }
 
+            ImageFormat format =
+                imageFormat ?? ImageFormat.Png;
+
             if (format.Guid == ImageFormat.Png.Guid)
             {
-                return rawBytes;
+                return rawBytes.ToArray();
             }
 
             using var inputStream =
@@ -272,6 +398,7 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
 
             return outputStream.ToArray();
         }
+
 
 
         /// <summary>
@@ -298,7 +425,7 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
         /// <summary>
         /// Disposes and clears the cached full and cropped bitmaps.
         /// </summary>
-        private void ClearBitmaps()
+        private void ClearBitmapsCore()
         {
             _fullBitmap?.Dispose();
             _fullBitmap = null;
@@ -307,11 +434,18 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
         }
 
         /// <summary>
-        /// Releases the cached bitmap resources.
+        /// Releases the cached screenshot resources.
         /// </summary>
         public void Dispose()
         {
-            ClearBitmaps();
+            lock (_screenshotStateSync)
+            {
+                ClearBitmapsCore();
+
+                _rawScreenshot = null;
+                _hasBeenCropped = false;
+            }
+
             GC.SuppressFinalize(this);
         }
     }

@@ -47,10 +47,8 @@ public sealed class AndroidScreenOcrService(
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        screenshotService.TakeScreenshot();
-
         byte[] imageBuffer =
-            screenshotService.GetBytesOfCachedScreenshotBytes();
+            screenshotService.CaptureScreenshotBytes();
 
         return await RecognizeAsync(
                 imageBuffer,

@@ -59,11 +59,30 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
         void TakeAndSaveScreenshot(OmniRectangle area,string filename, System.Drawing.Imaging.ImageFormat? imageFormat = null);
 
         /// <summary>
+        /// Captures a fresh screenshot and returns encoded bytes belonging to that exact capture.
+        /// </summary>
+        /// <param name="imageFormat">
+        /// The image format to return. PNG is used when no format is specified.
+        /// </param>
+        /// <returns>
+        /// The encoded bytes of the newly captured screenshot.
+        /// </returns>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the screenshot cannot be captured or contains no image data.
+        /// </exception>
+        byte[] CaptureScreenshotBytes(
+            System.Drawing.Imaging.ImageFormat? imageFormat = null);
+    
+        /// <summary>
         /// Returns the cached screenshot as encoded image bytes, capturing it when necessary.
         /// </summary>
-        /// <param name="imageFormat">The image format, or null to use PNG.</param>
-        /// <returns>The encoded screenshot bytes.</returns>
-        public byte [ ] GetBytesOfCachedScreenshotBytes(
+        /// <param name="imageFormat">
+        /// The image format to return. PNG is used when no format is specified.
+        /// </param>
+        /// <returns>
+        /// The screenshot encoded as an image byte array.
+        /// </returns>
+        byte[] GetBytesOfCachedScreenshotBytes(
             System.Drawing.Imaging.ImageFormat? imageFormat = null
         );
     }

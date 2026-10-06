@@ -59,10 +59,8 @@ public sealed class AndroidScreenObservationService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        _screenshotService.TakeScreenshot();
-
         byte[] imageBytes =
-            _screenshotService.GetBytesOfCachedScreenshotBytes();
+            _screenshotService.CaptureScreenshotBytes();
 
         if (imageBytes.Length == 0)
         {
