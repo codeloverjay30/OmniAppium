@@ -6,13 +6,14 @@ using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
 using CommonModels;
 using OmniAppium.ConfigUtilityService.Models;
-using OmniAppium.EngineUtilityService.Services.Screenshots;
-using System.Drawing.Imaging;
+using OmniAppium.EngineUtilityServices.Models.Observation;
+using OmniAppium.EngineUtilityServices.Services.Observation;
 
 namespace OmniAppium.EngineUtilityService.Utilities;
 
 /// <summary>
-/// Handles Gemini-powered automation jobs.
+/// Handles Gemini-powered automation jobs by consuming an atomic Android
+/// screen observation.
 /// </summary>
 /// <typeparam name="TProgress">
 /// The workflow progress model used to report AI execution progress.
@@ -26,7 +27,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     private readonly IGeminiToolRegistry _registry;
     private readonly GeminiToolConverter _converter;
     private readonly IGeminiSessionManager _sessionManager;
-    private readonly IScreenshotService _screenshotService;
+    private readonly IAndroidScreenObservationService _screenObservationService;
     private readonly IProgress<TProgress> _progressBar;
 
     private AiExecutionSettings _aiExecutionSettings;
@@ -46,8 +47,8 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     /// <param name="sessionManager">
     /// The Gemini session manager.
     /// </param>
-    /// <param name="screenshotService">
-    /// The screenshot service used to capture the current screen state.
+    /// <param name="screenObservationService">
+    /// The service used to acquire an atomic Android screen observation.
     /// </param>
     /// <param name="progressBar">
     /// The progress reporter.
@@ -57,14 +58,14 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
         IGeminiToolRegistry registry,
         GeminiToolConverter converter,
         IGeminiSessionManager sessionManager,
-        IScreenshotService screenshotService,
+        IAndroidScreenObservationService screenObservationService,
         IProgress<TProgress> progressBar)
     {
         ArgumentNullException.ThrowIfNull(aiExecutionSettings);
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(converter);
         ArgumentNullException.ThrowIfNull(sessionManager);
-        ArgumentNullException.ThrowIfNull(screenshotService);
+        ArgumentNullException.ThrowIfNull(screenObservationService);
         ArgumentNullException.ThrowIfNull(progressBar);
 
         ValidateExecutionSettings(aiExecutionSettings);
@@ -73,7 +74,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
         _registry = registry;
         _converter = converter;
         _sessionManager = sessionManager;
-        _screenshotService = screenshotService;
+        _screenObservationService = screenObservationService;
         _progressBar = progressBar;
     }
 
@@ -100,8 +101,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     /// The automation job.
     /// </param>
     /// <returns>
-    /// <see langword="true"/> when the job is a <see cref="GeminiJob"/>;
-    /// otherwise, <see langword="false"/>.
+    /// <see langword="true"/> when the job is a <see cref="GeminiJob"/>.
     /// </returns>
     public bool CanHandle(Job job)
     {
@@ -134,7 +134,8 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     }
 
     /// <summary>
-    /// Executes the specified Gemini automation job.
+    /// Executes the specified Gemini automation job using a single atomic
+    /// Android screen observation.
     /// </summary>
     /// <param name="gJob">
     /// The Gemini automation job.
@@ -147,8 +148,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     {
         ArgumentNullException.ThrowIfNull(gJob);
 
-        ValidateExecutionSettings(
-            _aiExecutionSettings);
+        ValidateExecutionSettings(_aiExecutionSettings);
 
         ArgumentException.ThrowIfNullOrWhiteSpace(
             gJob.UserTask,
@@ -158,59 +158,53 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
             gJob.Prompt,
             nameof(gJob.Prompt));
 
-        var tools = _registry
+        _ = _registry
             .GetAllTools()
             .Select(_converter.ToToolDeclaration)
             .ToList();
 
-        /*
-         * Capture a fresh screenshot before AI reasoning.
-         * GetBytesOfCachedScreenshotBytes() alone may return stale state.
-         */
-        _screenshotService.TakeScreenshot();
+        using CancellationTokenSource cts =
+            new(_aiExecutionSettings.ToolExecutionTimeout);
 
-        var imageBytes =
-            _screenshotService.GetBytesOfCachedScreenshotBytes(
-                ImageFormat.Jpeg);
+        CancellationToken cancellationToken = cts.Token;
 
-        if (imageBytes.Length == 0)
-        {
-            throw new InvalidOperationException(
-                "The current screen capture produced an empty image buffer.");
-        }
+        IAndroidScreenObservation observation =
+            await _screenObservationService
+                .ObserveAsync(cancellationToken)
+                .ConfigureAwait(false);
 
-        var request =
-            DefaultRequest.DeepClone();
+        cancellationToken.ThrowIfCancellationRequested();
 
-        request.SetPrompt(
-            gJob.Prompt);
+        var request = DefaultRequest.DeepClone();
+
+        request.SetPrompt(gJob.Prompt);
 
         request.AddUserMessage(
             request.Prompt,
-            imageBytes,
+            observation.ImageBytes.ToArray(),
             "image/jpeg");
 
         /*
-         * Keep tool declarations on the request only when the existing
-         * request contract requires them explicitly.
+         * Slice 3 boundary:
          *
-         * The Gemini session manager may also obtain tool metadata through
-         * its tool service. Do not duplicate the tool registration lifecycle.
+         * Both screenshot and OCR context MUST originate from this exact
+         * observation instance.
+         *
+         * Do not acquire another screenshot or invoke OCR directly here.
+         *
+         * OCR context injection must use the existing Gemini request contract.
+         * Do not invent a new Planner/ExecutionScope/AiUtility contract here.
          */
 
-        using CancellationTokenSource cts =
-            new CancellationTokenSource(
-                _aiExecutionSettings.ToolExecutionTimeout);
-
-        var ct = cts.Token;
-
         var executionResult =
-            await _sessionManager.ExecuteWithToolSupportAsync<TProgress>(
-                request: request,
-                userTask: gJob.UserTask,
-                settings: _aiExecutionSettings,
-                ct: ct,
-                progress: _progressBar);
+            await _sessionManager
+                .ExecuteWithToolSupportAsync<TProgress>(
+                    request: request,
+                    userTask: gJob.UserTask,
+                    settings: _aiExecutionSettings,
+                    ct: cancellationToken,
+                    progress: _progressBar)
+                .ConfigureAwait(false);
 
         if (!executionResult.IsAllSuccess)
         {
