@@ -1,4 +1,6 @@
 using OCRUtilityServices.Models;
+using OmniAppium.EngineUtilityServices.Models.Stability;
+using OmniAppium.EngineUtilityServices.Services.Stability;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityServices.Models.Observation;
 using OmniAppium.EngineUtilityServices.Services.OCR;
@@ -15,6 +17,8 @@ public sealed class AndroidScreenObservationService
         "The captured Android screen contains no image data.";
 
     private readonly IScreenshotService _screenshotService;
+    private readonly IAndroidScreenStabilityGuard _stabilityGuard;
+    private readonly ScreenStabilityOptions _stabilityOptions;
     private readonly IAndroidScreenOcrService _androidScreenOcrService;
 
     /// <summary>
@@ -29,11 +33,18 @@ public sealed class AndroidScreenObservationService
     /// </param>
     public AndroidScreenObservationService(
         IScreenshotService screenshotService,
-        IAndroidScreenOcrService androidScreenOcrService)
+        IAndroidScreenOcrService androidScreenOcrService,
+        IAndroidScreenStabilityGuard stabilityGuard,
+        ScreenStabilityOptions stabilityOptions)
     {
         ArgumentNullException.ThrowIfNull(screenshotService);
         ArgumentNullException.ThrowIfNull(androidScreenOcrService);
 
+        ArgumentNullException.ThrowIfNull(stabilityGuard);
+        ArgumentNullException.ThrowIfNull(stabilityOptions);
+        stabilityOptions.Validate();
+        _stabilityGuard = stabilityGuard;
+        _stabilityOptions = stabilityOptions;
         _screenshotService = screenshotService;
         _androidScreenOcrService = androidScreenOcrService;
     }
@@ -58,6 +69,17 @@ public sealed class AndroidScreenObservationService
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        ScreenStabilityResult stability = await _stabilityGuard
+            .WaitForStabilityAsync(_stabilityOptions, cancellationToken)
+            .ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!stability.IsStable || stability.TimedOut)
+        {
+            throw new TimeoutException(
+                $"Android screen stability timeout after {stability.SampleCount} samples.");
+        }
 
         byte[] imageBytes =
             _screenshotService.CaptureScreenshotBytes();
