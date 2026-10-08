@@ -3,6 +3,7 @@ using OmniAppium.EngineUtilityServices.Services.Grounding;
 using OmniAppium.EngineUtilityServices.Services.OCR;
 using OCRUtilityServices.Models;
 using System.Globalization;
+using OmniAppium.EngineUtilityServices.Models.Observation;
 
 namespace OmniAppium.EngineUtilityServices.Services.Planner;
 
@@ -56,15 +57,11 @@ public sealed class OcrGroundedPlannerExecutionScopeFactory
     }
 
     /// <inheritdoc/>
-    public async Task<IOcrGroundedPlannerExecutionScope> CreateAsync(
+    public Task<IOcrGroundedPlannerExecutionScope> CreateAsync(
+        IAndroidScreenObservation observation,
         CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        OcrResult ocrResult =
-            await _androidScreenOcrService
-                .RecognizeCurrentScreenAsync(cancellationToken)
-                .ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(observation);
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -74,13 +71,8 @@ public sealed class OcrGroundedPlannerExecutionScopeFactory
         OcrGroundedSnapshot snapshot =
             _snapshotFactory.Create(
                 snapshotId,
-                ocrResult);
+                observation.OcrResult);
 
-        /*
-         * Freshness is device/screen-global, while the execution-state accessor
-         * is logical-async-flow-local. Marking a newer screen current therefore
-         * intentionally makes older snapshots stale.
-         */
         _freshnessGuard.MarkCurrent(
             snapshot.SnapshotId);
 
@@ -95,9 +87,12 @@ public sealed class OcrGroundedPlannerExecutionScopeFactory
                 _executionStateAccessor.Push(
                     executionState);
 
-            return new OcrGroundedPlannerExecutionScope(
-                snapshot,
-                executionStateLease);
+            IOcrGroundedPlannerExecutionScope scope =
+                new OcrGroundedPlannerExecutionScope(
+                    snapshot,
+                    executionStateLease);
+
+            return Task.FromResult(scope);
         }
         catch
         {
@@ -105,6 +100,7 @@ public sealed class OcrGroundedPlannerExecutionScopeFactory
             throw;
         }
     }
+
 
     /// <summary>
     /// Creates a concurrency-safe process-local snapshot identifier.

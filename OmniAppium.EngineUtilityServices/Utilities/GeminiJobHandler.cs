@@ -1,5 +1,7 @@
-﻿using AiUtility.AiBaseUtilityServices.Models;
+﻿using System.ComponentModel.DataAnnotations;
+using AiUtility.AiBaseUtilityServices.Models;
 using AiUtility.GeminiKits.Abstractions;
+using AiUtility.GeminiKits.Models;
 using AiUtility.GeminiKits.Services;
 using AiUtility.GeminiUtilityServices.Configs;
 using AiUtility.GeminiUtilityServices.Models;
@@ -8,6 +10,7 @@ using CommonModels;
 using OmniAppium.ConfigUtilityService.Models;
 using OmniAppium.EngineUtilityServices.Models.Observation;
 using OmniAppium.EngineUtilityServices.Services.Observation;
+using OmniAppium.EngineUtilityServices.Services.Planner;
 
 namespace OmniAppium.EngineUtilityService.Utilities;
 
@@ -33,33 +36,15 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
 
     private AiExecutionSettings _aiExecutionSettings;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="GeminiJobHandler{TProgress}"/> class.
-    /// </summary>
-    /// <param name="aiExecutionSettings">
-    /// The AI execution settings.
-    /// </param>
-    /// <param name="registry">
-    /// The Gemini tool registry.
-    /// </param>
-    /// <param name="converter">
-    /// The Gemini tool declaration converter.
-    /// </param>
-    /// <param name="sessionManager">
-    /// The Gemini session manager.
-    /// </param>
-    /// <param name="screenObservationService">
-    /// The service used to acquire an atomic Android screen observation.
-    /// </param>
-    /// <param name="progressBar">
-    /// The progress reporter.
-    /// </param>
+    private readonly IOcrGroundedPlannerExecutionScopeFactory _plannerExecutionScopeFactory;
+
     public GeminiJobHandler(
         AiExecutionSettings aiExecutionSettings,
         IGeminiToolRegistry registry,
         GeminiToolConverter converter,
         IGeminiSessionManager sessionManager,
         IAndroidScreenObservationService screenObservationService,
+        IOcrGroundedPlannerExecutionScopeFactory plannerExecutionScopeFactory,
         IProgress<TProgress> progressBar)
     {
         ArgumentNullException.ThrowIfNull(aiExecutionSettings);
@@ -67,6 +52,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
         ArgumentNullException.ThrowIfNull(converter);
         ArgumentNullException.ThrowIfNull(sessionManager);
         ArgumentNullException.ThrowIfNull(screenObservationService);
+        ArgumentNullException.ThrowIfNull(plannerExecutionScopeFactory);
         ArgumentNullException.ThrowIfNull(progressBar);
 
         ValidateExecutionSettings(aiExecutionSettings);
@@ -76,8 +62,11 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
         _converter = converter;
         _sessionManager = sessionManager;
         _screenObservationService = screenObservationService;
+        _plannerExecutionScopeFactory =
+            plannerExecutionScopeFactory;
         _progressBar = progressBar;
     }
+
 
     /// <summary>
     /// Updates the AI execution settings used by subsequent Gemini jobs.
@@ -142,92 +131,111 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     }
 
     /// <summary>
-    /// Executes the specified Gemini automation job using one atomic Android
-    /// screen observation for both the screenshot and OCR context.
+    /// Executes a Gemini job against a single immutable Android screen observation.
+    /// The same observation is used for both Gemini visual context and the
+    /// OCR-grounded planner execution scope.
     /// </summary>
     /// <param name="gJob">
-    /// The Gemini automation job to execute.
+    /// The Gemini job containing the prompt and user task to execute.
     /// </param>
-    /// <returns>
-    /// A task representing the asynchronous AI workflow.
-    /// </returns>
     /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="gJob"/> is <see langword="null"/>.
+    /// Thrown when <paramref name="gJob"/> is null or when a required job string
+    /// is null, empty, or consists only of white-space characters.
     /// </exception>
-    /// <exception cref="ArgumentException">
-    /// Thrown when the user task or prompt is empty or consists only of
-    /// white-space characters.
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when the configured tool execution timeout is not greater than zero.
     /// </exception>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when the Gemini workflow does not complete successfully.
-    /// </exception>
-    public async Task AutoExecuteAsync(
-        GeminiJob gJob)
+    public async Task AutoExecuteAsync(GeminiJob gJob)
     {
         ArgumentNullException.ThrowIfNull(gJob);
 
-        ValidateExecutionSettings(_aiExecutionSettings);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(
+            _aiExecutionSettings.ToolExecutionTimeout.TotalMilliseconds,
+            nameof(_aiExecutionSettings.ToolExecutionTimeout));
 
         ArgumentException.ThrowIfNullOrWhiteSpace(
             gJob.UserTask,
-            nameof(gJob.UserTask));
+            nameof(GeminiJob.UserTask));
 
         ArgumentException.ThrowIfNullOrWhiteSpace(
             gJob.Prompt,
-            nameof(gJob.Prompt));
+            nameof(GeminiJob.Prompt));
 
-        _ = _registry
-            .GetAllTools()
-            .Select(_converter.ToToolDeclaration)
-            .ToList();
-
-        using CancellationTokenSource cts =
-            new(_aiExecutionSettings.ToolExecutionTimeout);
-
-        CancellationToken cancellationToken =
-            cts.Token;
-
+        /*
+         * Slice 5 boundary:
+         * Acquire exactly one observation for this execution.
+         *
+         * Its ImageBytes and OcrResult belong to the same physical screen
+         * capture, preventing Gemini and the grounded planner from reasoning
+         * about different screen states.
+         */
         IAndroidScreenObservation observation =
             await _screenObservationService
-                .ObserveAsync(cancellationToken)
+                .ObserveAsync()
                 .ConfigureAwait(false);
 
-        cancellationToken.ThrowIfCancellationRequested();
+        /*
+         * The planner scope must be created from the exact observation that
+         * Gemini will receive below.
+         *
+         * Keep this scope alive for the complete Gemini tool-execution lifetime.
+         * using guarantees cleanup on success, exception, and cancellation.
+         */
+        using IOcrGroundedPlannerExecutionScope plannerExecutionScope =
+            await _plannerExecutionScopeFactory
+                .CreateAsync(observation)
+                .ConfigureAwait(false);
 
+        /*
+         * Convert all currently registered services into Gemini tool
+         * declarations.
+         */
+        List<GeminiToolDeclaration> tools =
+            _registry
+                .GetAllTools()
+                .Select(metadata =>
+                    _converter.ToToolDeclaration(metadata))
+                .ToList();
+
+        /*
+         * Clone the shared request template so this execution owns all mutable
+         * request state.
+         */
         GeminiGenerateRequest request =
             DefaultRequest.DeepClone();
 
         request.SetPrompt(gJob.Prompt);
 
         /*
-         * The screenshot and OCR context intentionally originate from the
-         * exact same observation instance. Do not reacquire the screen or
-         * invoke OCR independently in this handler.
+         * IMPORTANT:
+         * Use the image from the already-acquired observation.
+         * Do not capture another screenshot here.
          */
         request.AddUserMessage(
-            request.Prompt,
-            observation.ImageBytes.ToArray(),
-            "image/jpeg");
+            request.RawPrompt,
+            observation.ImageBytes);
 
-        AddOcrContext(
-            request,
-            observation);
+        request.Tools =
+        [
+            new GeminiGenerateRequest.GeminiToolDeclarationWrapper
+            {
+                FunctionDeclarations = tools
+            }
+        ];
 
-        var executionResult =
-            await _sessionManager
-                .ExecuteWithToolSupportAsync<TProgress>(
-                    request: request,
-                    userTask: gJob.UserTask,
-                    settings: _aiExecutionSettings,
-                    ct: cancellationToken,
-                    progress: _progressBar)
-                .ConfigureAwait(false);
-
-        if (!executionResult.IsAllSuccess)
-        {
-            throw new InvalidOperationException(
-                "The Gemini workflow did not complete successfully.");
-        }
+        /*
+         * plannerExecutionScope intentionally remains alive during this await.
+         * Gemini tool calls therefore resolve against the planner state derived
+         * from the same observation used above.
+         */
+        await _sessionManager
+            .ExecuteWithToolSupportAsync<TProgress>(
+                request,
+                gJob.UserTask.AsMemory(),
+                _aiExecutionSettings,
+                default,
+                _progressBar)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -260,26 +268,78 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     }
 
     /// <summary>
-    /// Validates the supplied AI execution settings.
+    /// Validates the supplied AI execution settings against its declared
+    /// data-annotation constraints and handler-specific runtime requirements.
     /// </summary>
     /// <param name="settings">
-    /// The AI execution settings.
+    /// The AI execution settings to validate.
     /// </param>
     /// <exception cref="ArgumentNullException">
     /// Thrown when <paramref name="settings"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// Thrown when the tool execution timeout is not greater than zero.
+    /// Thrown when an execution setting violates its supported range.
     /// </exception>
     private static void ValidateExecutionSettings(
         AiExecutionSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
+        List<ValidationResult> validationResults = [];
+
+        bool isValid =
+            Validator.TryValidateObject(
+                settings,
+                new ValidationContext(settings),
+                validationResults,
+                validateAllProperties: true);
+
+        if (!isValid)
+        {
+            ValidationResult validationResult =
+                validationResults[0];
+
+            string memberName =
+                validationResult.MemberNames.FirstOrDefault()
+                ?? nameof(settings);
+
+            object? actualValue =
+                memberName switch
+                {
+                    nameof(AiExecutionSettings.MaxSteps) =>
+                        settings.MaxSteps,
+
+                    nameof(AiExecutionSettings.Threshold) =>
+                        settings.Threshold,
+
+                    nameof(AiExecutionSettings.LastTokenCountNeededToBeKept) =>
+                        settings.LastTokenCountNeededToBeKept,
+
+                    nameof(AiExecutionSettings.ToolExecutionTimeout) =>
+                        settings.ToolExecutionTimeout,
+
+                    _ => null
+                };
+
+            throw new ArgumentOutOfRangeException(
+                memberName,
+                actualValue,
+                validationResult.ErrorMessage
+                    ?? "The AI execution settings are invalid.");
+        }
+
+        if (settings.MaxSteps < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(settings.MaxSteps),
+                settings.MaxSteps,
+                "MaxSteps must be non-negative.");
+        }
+
         if (settings.ToolExecutionTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(settings),
+                nameof(settings.ToolExecutionTimeout),
                 settings.ToolExecutionTimeout,
                 "ToolExecutionTimeout must be greater than zero.");
         }
