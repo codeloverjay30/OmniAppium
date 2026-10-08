@@ -1,673 +1,824 @@
 using AiUtility.ToolKits.Abstractions;
-using AiUtility.ToolKits.Execution;
+using AiUtility.ToolKits.Services;
 using FluentAssertions;
 using Moq;
+using OCRUtilityServices.Models;
+using OmniAppium.EngineUtilityServices.Models.Observation;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
 using OmniAppium.EngineUtilityServices.Services.OCR;
 using OmniAppium.EngineUtilityServices.Services.Planner;
-using OCRUtilityServices.Models;
 
 namespace OmniAppium.EngineUtilityServices.Tests.Services.Planner;
 
 public sealed class OcrGroundedPlannerExecutionScopeFactoryTests
 {
-    [Fact]
-    public void Constructor_WhenAndroidScreenOcrServiceIsNull_ShouldThrowArgumentNullException()
+    private readonly Mock<IAndroidScreenOcrService>
+        _androidScreenOcrServiceMock;
+
+    private readonly Mock<IOcrGroundedSnapshotFactory>
+        _snapshotFactoryMock;
+
+    private readonly Mock<IOcrGroundedSnapshotFreshnessGuard>
+        _freshnessGuardMock;
+
+    private readonly Mock<
+        IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>>
+        _executionStateAccessorMock;
+
+    public OcrGroundedPlannerExecutionScopeFactoryTests()
     {
-        var snapshotFactoryMock =
-            new Mock<IOcrGroundedSnapshotFactory>(MockBehavior.Strict);
+        _androidScreenOcrServiceMock =
+            new Mock<IAndroidScreenOcrService>(
+                MockBehavior.Strict);
 
-        var freshnessGuardMock =
-            new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
+        _snapshotFactoryMock =
+            new Mock<IOcrGroundedSnapshotFactory>(
+                MockBehavior.Strict);
 
-        var executionStateAccessorMock =
+        _freshnessGuardMock =
+            new Mock<IOcrGroundedSnapshotFreshnessGuard>(
+                MockBehavior.Strict);
+
+        _executionStateAccessorMock =
             new Mock<
                 IAiToolExecutionStateAccessor<
                     OcrGroundedPlannerExecutionState>>(
                 MockBehavior.Strict);
+    }
 
+    [Fact]
+    public void Constructor_ShouldThrowArgumentNullException_WhenAndroidScreenOcrServiceIsNull()
+    {
         Action act =
-            () => _ = new OcrGroundedPlannerExecutionScopeFactory(
+            () => new OcrGroundedPlannerExecutionScopeFactory(
                 null!,
-                snapshotFactoryMock.Object,
-                freshnessGuardMock.Object,
-                executionStateAccessorMock.Object);
+                _snapshotFactoryMock.Object,
+                _freshnessGuardMock.Object,
+                _executionStateAccessorMock.Object);
 
         act.Should()
             .Throw<ArgumentNullException>()
-            .WithMessage("*androidScreenOcrService*");
-
-        snapshotFactoryMock.VerifyNoOtherCalls();
-        freshnessGuardMock.VerifyNoOtherCalls();
-        executionStateAccessorMock.VerifyNoOtherCalls();
+            .WithMessage(
+                "*androidScreenOcrService*");
     }
 
     [Fact]
-    public async Task CreateAsync_WhenSuccessful_ShouldCreateAndExposeGroundedExecutionState()
+    public void Constructor_ShouldThrowArgumentNullException_WhenSnapshotFactoryIsNull()
     {
-        var ocrServiceMock =
-            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        Action act =
+            () => new OcrGroundedPlannerExecutionScopeFactory(
+                _androidScreenOcrServiceMock.Object,
+                null!,
+                _freshnessGuardMock.Object,
+                _executionStateAccessorMock.Object);
 
-        var snapshotFactoryMock =
-            new Mock<IOcrGroundedSnapshotFactory>(MockBehavior.Strict);
-
-        var freshnessGuardMock =
-            new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
-
-        var executionStateAccessorMock =
-            new Mock<
-                IAiToolExecutionStateAccessor<
-                    OcrGroundedPlannerExecutionState>>(
-                MockBehavior.Strict);
-
-        var leaseMock =
-            new Mock<IDisposable>(MockBehavior.Strict);
-
-        OcrResult ocrResult =
-            CreateOcrResult();
-
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot(
-                "snapshot-created-by-factory");
-
-        string? generatedSnapshotId = null;
-
-        ocrServiceMock
-            .Setup(
-                service => service.RecognizeCurrentScreenAsync(
-                    It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ocrResult);
-
-        snapshotFactoryMock
-            .Setup(
-                factory => factory.Create(
-                    It.IsAny<string>(),
-                    ocrResult))
-            .Callback<string, OcrResult>(
-                (snapshotId, _) =>
-                    generatedSnapshotId = snapshotId)
-            .Returns(snapshot);
-
-        freshnessGuardMock
-            .Setup(
-                guard => guard.MarkCurrent(
-                    snapshot.SnapshotId));
-
-        executionStateAccessorMock
-            .Setup(
-                accessor => accessor.Push(
-                    It.Is<OcrGroundedPlannerExecutionState>(
-                        state =>
-                            ReferenceEquals(
-                                state.Snapshot,
-                                snapshot))))
-            .Returns(leaseMock.Object);
-
-        leaseMock
-            .Setup(lease => lease.Dispose());
-
-        var sut =
-            new OcrGroundedPlannerExecutionScopeFactory(
-                ocrServiceMock.Object,
-                snapshotFactoryMock.Object,
-                freshnessGuardMock.Object,
-                executionStateAccessorMock.Object);
-
-        IOcrGroundedPlannerExecutionScope scope =
-            await sut.CreateAsync();
-
-        scope.Snapshot
-            .Should()
-            .BeSameAs(snapshot);
-
-        generatedSnapshotId
-            .Should()
-            .Be("ocr-snapshot-00000001");
-
-        executionStateAccessorMock.Verify(
-            accessor => accessor.Push(
-                It.Is<OcrGroundedPlannerExecutionState>(
-                    state =>
-                        ReferenceEquals(
-                            state.Snapshot,
-                            snapshot))),
-            Times.Once);
-
-        leaseMock.Verify(
-            lease => lease.Dispose(),
-            Times.Never);
-
-        scope.Dispose();
-
-        leaseMock.Verify(
-            lease => lease.Dispose(),
-            Times.Once);
-
-        ocrServiceMock.Verify(
-            service => service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()),
-            Times.Once);
-
-        snapshotFactoryMock.Verify(
-            factory => factory.Create(
-                "ocr-snapshot-00000001",
-                ocrResult),
-            Times.Once);
-
-        freshnessGuardMock.Verify(
-            guard => guard.MarkCurrent(
-                snapshot.SnapshotId),
-            Times.Once);
-
-        ocrServiceMock.VerifyNoOtherCalls();
-        snapshotFactoryMock.VerifyNoOtherCalls();
-        freshnessGuardMock.VerifyNoOtherCalls();
-        executionStateAccessorMock.VerifyNoOtherCalls();
-        leaseMock.VerifyNoOtherCalls();
-    }
-
-
-    [Fact]
-    public async Task CreateAsync_WhenCancellationTokenIsProvided_ShouldForwardSameTokenToOcrService()
-    {
-        var ocrServiceMock =
-            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
-
-        var snapshotFactoryMock =
-            new Mock<IOcrGroundedSnapshotFactory>(MockBehavior.Strict);
-
-        var freshnessGuardMock =
-            new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
-
-        var executionStateAccessorMock =
-            new Mock<
-                IAiToolExecutionStateAccessor<
-                    OcrGroundedPlannerExecutionState>>(
-                MockBehavior.Strict);
-
-        OcrResult ocrResult =
-            CreateOcrResult();
-
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot("snapshot-1");
-
-        using var cancellationTokenSource =
-            new CancellationTokenSource();
-
-        CancellationToken expectedToken =
-            cancellationTokenSource.Token;
-
-        var leaseMock =
-            new Mock<IDisposable>(MockBehavior.Strict);
-
-        leaseMock
-            .Setup(lease => lease.Dispose());
-
-        ocrServiceMock
-            .Setup(
-                service => service.RecognizeCurrentScreenAsync(
-                    expectedToken))
-            .ReturnsAsync(ocrResult);
-
-        snapshotFactoryMock
-            .Setup(
-                factory => factory.Create(
-                    It.IsAny<string>(),
-                    ocrResult))
-            .Returns(snapshot);
-
-        freshnessGuardMock
-            .Setup(
-                guard => guard.MarkCurrent(
-                    snapshot.SnapshotId));
-
-        executionStateAccessorMock
-            .Setup(
-                accessor => accessor.Push(
-                    It.Is<OcrGroundedPlannerExecutionState>(
-                        state =>
-                            ReferenceEquals(
-                                state.Snapshot,
-                                snapshot))))
-            .Returns(leaseMock.Object);
-
-        var sut =
-            new OcrGroundedPlannerExecutionScopeFactory(
-                ocrServiceMock.Object,
-                snapshotFactoryMock.Object,
-                freshnessGuardMock.Object,
-                executionStateAccessorMock.Object);
-
-        using IOcrGroundedPlannerExecutionScope scope =
-            await sut.CreateAsync(expectedToken);
-
-        scope.Snapshot
-            .Should()
-            .BeSameAs(snapshot);
-
-        ocrServiceMock.Verify(
-            service => service.RecognizeCurrentScreenAsync(
-                expectedToken),
-            Times.Once);
-
-        snapshotFactoryMock.Verify(
-            factory => factory.Create(
-                It.IsAny<string>(),
-                ocrResult),
-            Times.Once);
-
-        freshnessGuardMock.Verify(
-            guard => guard.MarkCurrent(
-                snapshot.SnapshotId),
-            Times.Once);
-
-        executionStateAccessorMock.Verify(
-            accessor => accessor.Push(
-                It.IsAny<OcrGroundedPlannerExecutionState>()),
-            Times.Once);
-
-        leaseMock.Verify(
-            lease => lease.Dispose(),
-            Times.Never);
-
-        scope.Dispose();
-
-        leaseMock.Verify(
-            lease => lease.Dispose(),
-            Times.Once);
-    
-
-        ocrServiceMock.VerifyNoOtherCalls();
-        snapshotFactoryMock.VerifyNoOtherCalls();
-        freshnessGuardMock.VerifyNoOtherCalls();
-        executionStateAccessorMock.VerifyNoOtherCalls();
-        leaseMock.VerifyNoOtherCalls();
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithMessage(
+                "*snapshotFactory*");
     }
 
     [Fact]
-    public async Task CreateAsync_WhenAlreadyCancelled_ShouldNotInvokeDependencies()
+    public void Constructor_ShouldThrowArgumentNullException_WhenFreshnessGuardIsNull()
     {
-        var ocrServiceMock =
-            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        Action act =
+            () => new OcrGroundedPlannerExecutionScopeFactory(
+                _androidScreenOcrServiceMock.Object,
+                _snapshotFactoryMock.Object,
+                null!,
+                _executionStateAccessorMock.Object);
 
-        var snapshotFactoryMock =
-            new Mock<IOcrGroundedSnapshotFactory>(MockBehavior.Strict);
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithMessage(
+                "*freshnessGuard*");
+    }
 
-        var freshnessGuardMock =
-            new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
+    [Fact]
+    public void Constructor_ShouldThrowArgumentNullException_WhenExecutionStateAccessorIsNull()
+    {
+        Action act =
+            () => new OcrGroundedPlannerExecutionScopeFactory(
+                _androidScreenOcrServiceMock.Object,
+                _snapshotFactoryMock.Object,
+                _freshnessGuardMock.Object,
+                null!);
 
-        var executionStateAccessorMock =
-            new Mock<
-                IAiToolExecutionStateAccessor<
-                    OcrGroundedPlannerExecutionState>>(
-                MockBehavior.Strict);
+        act.Should()
+            .Throw<ArgumentNullException>()
+            .WithMessage(
+                "*executionStateAccessor*");
+    }
 
-        using var cancellationTokenSource =
-            new CancellationTokenSource();
-
-        cancellationTokenSource.Cancel();
-
-        var sut =
-            new OcrGroundedPlannerExecutionScopeFactory(
-                ocrServiceMock.Object,
-                snapshotFactoryMock.Object,
-                freshnessGuardMock.Object,
-                executionStateAccessorMock.Object);
+    [Fact]
+    public async Task CreateAsync_ShouldThrowArgumentNullException_WhenObservationIsNull()
+    {
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
 
         Func<Task> act =
             async () =>
-                _ = await sut.CreateAsync(
+                await sut.CreateAsync(
+                    null!);
+
+        await act.Should()
+            .ThrowAsync<ArgumentNullException>()
+            .WithMessage(
+                "*observation*");
+
+        VerifyNoOcrCapture();
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldThrowOperationCanceledException_WhenCancellationWasAlreadyRequested()
+    {
+        OcrResult ocrResult =
+            CreateOcrResult(
+                "Start Battle");
+
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
+
+        using CancellationTokenSource cancellationTokenSource =
+            new();
+
+        cancellationTokenSource.Cancel();
+
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
+
+        Func<Task> act =
+            async () =>
+                await sut.CreateAsync(
+                    observation,
                     cancellationTokenSource.Token);
 
         await act.Should()
             .ThrowAsync<OperationCanceledException>()
-            .WithMessage(
-                "*The operation was canceled*");
+            .WithMessage("*canceled*");
 
-        ocrServiceMock.VerifyNoOtherCalls();
-        snapshotFactoryMock.VerifyNoOtherCalls();
-        freshnessGuardMock.VerifyNoOtherCalls();
-        executionStateAccessorMock.VerifyNoOtherCalls();
+        _snapshotFactoryMock.Verify(
+            factory =>
+                factory.Create(
+                    It.IsAny<string>(),
+                    It.IsAny<OcrResult>()),
+            Times.Never);
+
+        _freshnessGuardMock.Verify(
+            guard =>
+                guard.MarkCurrent(
+                    It.IsAny<string>()),
+            Times.Never);
+
+        _executionStateAccessorMock.Verify(
+            accessor =>
+                accessor.Push(
+                    It.IsAny<
+                        OcrGroundedPlannerExecutionState>()),
+            Times.Never);
+
+        VerifyNoOcrCapture();
     }
 
     [Fact]
-    public async Task CreateAsync_WhenOcrFails_ShouldPropagateOriginalExceptionAndNotEstablishState()
+    public async Task CreateAsync_ShouldUseOcrResultFromProvidedObservation()
     {
-        var ocrServiceMock =
-            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        OcrResult ocrResult =
+            CreateOcrResult(
+                "Start Battle");
 
-        var snapshotFactoryMock =
-            new Mock<IOcrGroundedSnapshotFactory>(MockBehavior.Strict);
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
 
-        var freshnessGuardMock =
-            new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
 
-        var executionStateAccessorMock =
-            new Mock<
-                IAiToolExecutionStateAccessor<
-                    OcrGroundedPlannerExecutionState>>(
-                MockBehavior.Strict);
+        Mock<IDisposable> leaseMock =
+            CreateLeaseMock();
 
-        ocrServiceMock
-            .Setup(
-                service => service.RecognizeCurrentScreenAsync(
-                    It.IsAny<CancellationToken>()))
-            .ThrowsAsync(
-                new InvalidOperationException(
-                    "OCR capture failed."));
+        _snapshotFactoryMock
+            .Setup(factory =>
+                factory.Create(
+                    "ocr-snapshot-00000001",
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                ocrResult))))
+            .Returns(snapshot);
 
-        var sut =
-            new OcrGroundedPlannerExecutionScopeFactory(
-                ocrServiceMock.Object,
-                snapshotFactoryMock.Object,
-                freshnessGuardMock.Object,
-                executionStateAccessorMock.Object);
+        _freshnessGuardMock
+            .Setup(guard =>
+                guard.MarkCurrent(
+                    snapshot.SnapshotId));
 
-        Func<Task> act =
-            async () => _ = await sut.CreateAsync();
+        _executionStateAccessorMock
+            .Setup(accessor =>
+                accessor.Push(
+                    It.Is<
+                        OcrGroundedPlannerExecutionState>(
+                        state =>
+                            ReferenceEquals(
+                                state.Snapshot,
+                                snapshot))))
+            .Returns(
+                leaseMock.Object);
 
-        await act.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage(
-                "OCR capture failed.");
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
 
-        ocrServiceMock.Verify(
-            service => service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()),
+        IOcrGroundedPlannerExecutionScope scope =
+            await sut.CreateAsync(
+                observation);
+
+        scope.Snapshot
+            .Should()
+            .BeSameAs(snapshot);
+
+        _snapshotFactoryMock.Verify(
+            factory =>
+                factory.Create(
+                    "ocr-snapshot-00000001",
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                ocrResult))),
             Times.Once);
 
-        ocrServiceMock.VerifyNoOtherCalls();
-        snapshotFactoryMock.VerifyNoOtherCalls();
-        freshnessGuardMock.VerifyNoOtherCalls();
-        executionStateAccessorMock.VerifyNoOtherCalls();
+        VerifyNoOcrCapture();
+
+        scope.Dispose();
+
+        leaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Once);
     }
 
     [Fact]
-    public async Task CreateAsync_WhenSnapshotCreationFails_ShouldNotMarkFreshnessOrPushState()
+    public async Task CreateAsync_ShouldMarkCreatedSnapshotAsCurrent()
     {
-        var ocrServiceMock =
-            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
-
-        var snapshotFactoryMock =
-            new Mock<IOcrGroundedSnapshotFactory>(MockBehavior.Strict);
-
-        var freshnessGuardMock =
-            new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
-
-        var executionStateAccessorMock =
-            new Mock<
-                IAiToolExecutionStateAccessor<
-                    OcrGroundedPlannerExecutionState>>(
-                MockBehavior.Strict);
-
         OcrResult ocrResult =
-            CreateOcrResult();
+            CreateOcrResult(
+                "Start Battle");
 
-        ocrServiceMock
-            .Setup(
-                service => service.RecognizeCurrentScreenAsync(
-                    It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ocrResult);
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
 
-        snapshotFactoryMock
-            .Setup(
-                factory => factory.Create(
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
+
+        Mock<IDisposable> leaseMock =
+            CreateLeaseMock();
+
+        SetupSuccessfulScopeCreation(
+            ocrResult,
+            snapshot,
+            leaseMock.Object);
+
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
+
+        IOcrGroundedPlannerExecutionScope scope =
+            await sut.CreateAsync(
+                observation);
+
+        _freshnessGuardMock.Verify(
+            guard =>
+                guard.MarkCurrent(
+                    snapshot.SnapshotId),
+            Times.Once);
+
+        scope.Dispose();
+
+        leaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldPushExecutionStateContainingCreatedSnapshot()
+    {
+        OcrResult ocrResult =
+            CreateOcrResult(
+                "Start Battle");
+
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
+
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
+
+        Mock<IDisposable> leaseMock =
+            CreateLeaseMock();
+
+        _snapshotFactoryMock
+            .Setup(factory =>
+                factory.Create(
+                    "ocr-snapshot-00000001",
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                ocrResult))))
+            .Returns(snapshot);
+
+        _freshnessGuardMock
+            .Setup(guard =>
+                guard.MarkCurrent(
+                    snapshot.SnapshotId));
+
+        OcrGroundedPlannerExecutionState?
+            capturedExecutionState = null;
+
+        _executionStateAccessorMock
+            .Setup(accessor =>
+                accessor.Push(
+                    It.IsAny<
+                        OcrGroundedPlannerExecutionState>()))
+            .Callback<
+                OcrGroundedPlannerExecutionState>(
+                state =>
+                    capturedExecutionState = state)
+            .Returns(
+                leaseMock.Object);
+
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
+
+        IOcrGroundedPlannerExecutionScope scope =
+            await sut.CreateAsync(
+                observation);
+
+        capturedExecutionState.Should()
+            .NotBeNull();
+
+        capturedExecutionState!
+            .Snapshot
+            .Should()
+            .BeSameAs(snapshot);
+
+        scope.Snapshot
+            .Should()
+            .BeSameAs(snapshot);
+
+        scope.Dispose();
+
+        leaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldReturnScopeOwningExecutionStateLease()
+    {
+        OcrResult ocrResult =
+            CreateOcrResult(
+                "Start Battle");
+
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
+
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
+
+        Mock<IDisposable> leaseMock =
+            CreateLeaseMock();
+
+        SetupSuccessfulScopeCreation(
+            ocrResult,
+            snapshot,
+            leaseMock.Object);
+
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
+
+        IOcrGroundedPlannerExecutionScope scope =
+            await sut.CreateAsync(
+                observation);
+
+        leaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Never);
+
+        scope.Dispose();
+
+        leaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldNotDisposeLeaseMoreThanOnce_WhenScopeIsDisposedRepeatedly()
+    {
+        OcrResult ocrResult =
+            CreateOcrResult(
+                "Start Battle");
+
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
+
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
+
+        Mock<IDisposable> leaseMock =
+            CreateLeaseMock();
+
+        SetupSuccessfulScopeCreation(
+            ocrResult,
+            snapshot,
+            leaseMock.Object);
+
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
+
+        IOcrGroundedPlannerExecutionScope scope =
+            await sut.CreateAsync(
+                observation);
+
+        scope.Dispose();
+        scope.Dispose();
+
+        leaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldGenerateSequentialSnapshotIdentifiers()
+    {
+        OcrResult firstOcrResult =
+            CreateOcrResult(
+                "First screen");
+
+        OcrResult secondOcrResult =
+            CreateOcrResult(
+                "Second screen");
+
+        IAndroidScreenObservation firstObservation =
+            CreateObservation(
+                firstOcrResult);
+
+        IAndroidScreenObservation secondObservation =
+            CreateObservation(
+                secondOcrResult);
+
+        OcrGroundedSnapshot firstSnapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
+
+        OcrGroundedSnapshot secondSnapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000002");
+
+        Mock<IDisposable> firstLeaseMock =
+            CreateLeaseMock();
+
+        Mock<IDisposable> secondLeaseMock =
+            CreateLeaseMock();
+
+        _snapshotFactoryMock
+            .Setup(factory =>
+                factory.Create(
+                    "ocr-snapshot-00000001",
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                firstOcrResult))))
+            .Returns(firstSnapshot);
+
+        _snapshotFactoryMock
+            .Setup(factory =>
+                factory.Create(
+                    "ocr-snapshot-00000002",
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                secondOcrResult))))
+            .Returns(secondSnapshot);
+
+        _freshnessGuardMock
+            .Setup(guard =>
+                guard.MarkCurrent(
+                    firstSnapshot.SnapshotId));
+
+        _freshnessGuardMock
+            .Setup(guard =>
+                guard.MarkCurrent(
+                    secondSnapshot.SnapshotId));
+
+        _executionStateAccessorMock
+            .Setup(accessor =>
+                accessor.Push(
+                    It.Is<
+                        OcrGroundedPlannerExecutionState>(
+                        state =>
+                            ReferenceEquals(
+                                state.Snapshot,
+                                firstSnapshot))))
+            .Returns(
+                firstLeaseMock.Object);
+
+        _executionStateAccessorMock
+            .Setup(accessor =>
+                accessor.Push(
+                    It.Is<
+                        OcrGroundedPlannerExecutionState>(
+                        state =>
+                            ReferenceEquals(
+                                state.Snapshot,
+                                secondSnapshot))))
+            .Returns(
+                secondLeaseMock.Object);
+
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
+
+        IOcrGroundedPlannerExecutionScope firstScope =
+            await sut.CreateAsync(
+                firstObservation);
+
+        IOcrGroundedPlannerExecutionScope secondScope =
+            await sut.CreateAsync(
+                secondObservation);
+
+        firstScope.Snapshot.SnapshotId
+            .Should()
+            .Be("ocr-snapshot-00000001");
+
+        secondScope.Snapshot.SnapshotId
+            .Should()
+            .Be("ocr-snapshot-00000002");
+
+        VerifyNoOcrCapture();
+
+        firstScope.Dispose();
+        secondScope.Dispose();
+
+        firstLeaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Once);
+
+        secondLeaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldPropagateSnapshotFactoryException_WithoutPushingExecutionState()
+    {
+        OcrResult ocrResult =
+            CreateOcrResult(
+                "Start Battle");
+
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
+
+        _snapshotFactoryMock
+            .Setup(factory =>
+                factory.Create(
                     It.IsAny<string>(),
-                    ocrResult))
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                ocrResult))))
             .Throws(
                 new InvalidOperationException(
                     "Snapshot creation failed."));
 
-        var sut =
-            new OcrGroundedPlannerExecutionScopeFactory(
-                ocrServiceMock.Object,
-                snapshotFactoryMock.Object,
-                freshnessGuardMock.Object,
-                executionStateAccessorMock.Object);
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
 
         Func<Task> act =
-            async () => _ = await sut.CreateAsync();
+            async () =>
+                await sut.CreateAsync(
+                    observation);
 
         await act.Should()
             .ThrowAsync<InvalidOperationException>()
             .WithMessage(
                 "Snapshot creation failed.");
 
-        ocrServiceMock.Verify(
-            service => service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+        _freshnessGuardMock.Verify(
+            guard =>
+                guard.MarkCurrent(
+                    It.IsAny<string>()),
+            Times.Never);
 
-        snapshotFactoryMock.Verify(
-            factory => factory.Create(
-                It.IsAny<string>(),
-                ocrResult),
-            Times.Once);
+        _executionStateAccessorMock.Verify(
+            accessor =>
+                accessor.Push(
+                    It.IsAny<
+                        OcrGroundedPlannerExecutionState>()),
+            Times.Never);
 
-        ocrServiceMock.VerifyNoOtherCalls();
-        snapshotFactoryMock.VerifyNoOtherCalls();
-        freshnessGuardMock.VerifyNoOtherCalls();
-        executionStateAccessorMock.VerifyNoOtherCalls();
+        VerifyNoOcrCapture();
     }
 
     [Fact]
-    public async Task CreateAsync_WhenPushFails_ShouldPropagateOriginalException()
+    public async Task CreateAsync_ShouldPropagateFreshnessGuardException_WithoutPushingExecutionState()
     {
-        var ocrServiceMock =
-            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
-
-        var snapshotFactoryMock =
-            new Mock<IOcrGroundedSnapshotFactory>(MockBehavior.Strict);
-
-        var freshnessGuardMock =
-            new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
-
-        var executionStateAccessorMock =
-            new Mock<
-                IAiToolExecutionStateAccessor<
-                    OcrGroundedPlannerExecutionState>>(
-                MockBehavior.Strict);
-
         OcrResult ocrResult =
-            CreateOcrResult();
+            CreateOcrResult(
+                "Start Battle");
+
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
 
         OcrGroundedSnapshot snapshot =
-            CreateSnapshot("snapshot-1");
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
 
-        ocrServiceMock
-            .Setup(
-                service => service.RecognizeCurrentScreenAsync(
-                    It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ocrResult);
-
-        snapshotFactoryMock
-            .Setup(
-                factory => factory.Create(
-                    It.IsAny<string>(),
-                    ocrResult))
+        _snapshotFactoryMock
+            .Setup(factory =>
+                factory.Create(
+                    "ocr-snapshot-00000001",
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                ocrResult))))
             .Returns(snapshot);
 
-        freshnessGuardMock
-            .Setup(
-                guard => guard.MarkCurrent(
-                    snapshot.SnapshotId));
-
-        executionStateAccessorMock
-            .Setup(
-                accessor => accessor.Push(
-                    It.IsAny<OcrGroundedPlannerExecutionState>()))
+        _freshnessGuardMock
+            .Setup(guard =>
+                guard.MarkCurrent(
+                    snapshot.SnapshotId))
             .Throws(
                 new InvalidOperationException(
-                    "Execution state push failed."));
+                    "Freshness update failed."));
 
-        var sut =
-            new OcrGroundedPlannerExecutionScopeFactory(
-                ocrServiceMock.Object,
-                snapshotFactoryMock.Object,
-                freshnessGuardMock.Object,
-                executionStateAccessorMock.Object);
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
 
         Func<Task> act =
-            async () => _ = await sut.CreateAsync();
+            async () =>
+                await sut.CreateAsync(
+                    observation);
 
         await act.Should()
             .ThrowAsync<InvalidOperationException>()
             .WithMessage(
-                "Execution state push failed.");
+                "Freshness update failed.");
 
-        ocrServiceMock.Verify(
-            service => service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+        _executionStateAccessorMock.Verify(
+            accessor =>
+                accessor.Push(
+                    It.IsAny<
+                        OcrGroundedPlannerExecutionState>()),
+            Times.Never);
 
-        snapshotFactoryMock.Verify(
-            factory => factory.Create(
-                It.IsAny<string>(),
-                ocrResult),
-            Times.Once);
-
-        freshnessGuardMock.Verify(
-            guard => guard.MarkCurrent(
-                snapshot.SnapshotId),
-            Times.Once);
-
-        executionStateAccessorMock.Verify(
-            accessor => accessor.Push(
-                It.Is<OcrGroundedPlannerExecutionState>(
-                    state =>
-                        ReferenceEquals(
-                            state.Snapshot,
-                            snapshot))),
-            Times.Once);
-
-        ocrServiceMock.VerifyNoOtherCalls();
-        snapshotFactoryMock.VerifyNoOtherCalls();
-        freshnessGuardMock.VerifyNoOtherCalls();
-        executionStateAccessorMock.VerifyNoOtherCalls();
+        VerifyNoOcrCapture();
     }
 
     [Fact]
-    public async Task CreateAsync_WhenCalledTwice_ShouldGenerateDifferentSnapshotIds()
+    public async Task CreateAsync_ShouldPropagateExecutionStatePushException()
     {
-        var ocrServiceMock =
-            new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
-
-        var snapshotFactoryMock =
-            new Mock<IOcrGroundedSnapshotFactory>(MockBehavior.Strict);
-
-        var freshnessGuardMock =
-            new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
-
-        var executionStateAccessorMock =
-            new Mock<
-                IAiToolExecutionStateAccessor<
-                    OcrGroundedPlannerExecutionState>>(
-                MockBehavior.Strict);
-
         OcrResult ocrResult =
-            CreateOcrResult();
+            CreateOcrResult(
+                "Start Battle");
 
-        var generatedIds =
-            new List<string>();
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
 
-        ocrServiceMock
-            .Setup(
-                service => service.RecognizeCurrentScreenAsync(
-                    It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ocrResult);
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
 
-        snapshotFactoryMock
-            .Setup(
-                factory => factory.Create(
-                    It.IsAny<string>(),
-                    ocrResult))
-            .Returns(
-                (string snapshotId, OcrResult _) =>
-                {
-                    generatedIds.Add(snapshotId);
+        _snapshotFactoryMock
+            .Setup(factory =>
+                factory.Create(
+                    "ocr-snapshot-00000001",
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                ocrResult))))
+            .Returns(snapshot);
 
-                    return CreateSnapshot(snapshotId);
-                });
+        _freshnessGuardMock
+            .Setup(guard =>
+                guard.MarkCurrent(
+                    snapshot.SnapshotId));
 
-        freshnessGuardMock
-            .Setup(
-                guard => guard.MarkCurrent(
-                    It.IsAny<string>()));
+        _executionStateAccessorMock
+            .Setup(accessor =>
+                accessor.Push(
+                    It.IsAny<
+                        OcrGroundedPlannerExecutionState>()))
+            .Throws(
+                new InvalidOperationException(
+                    "Execution-state push failed."));
 
-        executionStateAccessorMock
-            .Setup(
-                accessor => accessor.Push(
-                    It.IsAny<OcrGroundedPlannerExecutionState>()))
-            .Returns(
-                () =>
-                {
-                    var leaseMock =
-                        new Mock<IDisposable>(
-                            MockBehavior.Strict);
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
 
-                    leaseMock
-                        .Setup(lease => lease.Dispose());
+        Func<Task> act =
+            async () =>
+                await sut.CreateAsync(
+                    observation);
 
-                    return leaseMock.Object;
-                });
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage(
+                "Execution-state push failed.");
 
-        var sut =
-            new OcrGroundedPlannerExecutionScopeFactory(
-                ocrServiceMock.Object,
-                snapshotFactoryMock.Object,
-                freshnessGuardMock.Object,
-                executionStateAccessorMock.Object);
-
-        using IOcrGroundedPlannerExecutionScope first =
-            await sut.CreateAsync();
-
-        using IOcrGroundedPlannerExecutionScope second =
-            await sut.CreateAsync();
-
-        generatedIds
-            .Should()
-            .HaveCount(2)
-            .And.OnlyHaveUniqueItems();
-
-        generatedIds[0]
-            .Should()
-            .Be("ocr-snapshot-00000001");
-
-        generatedIds[1]
-            .Should()
-            .Be("ocr-snapshot-00000002");
-
-        ocrServiceMock.Verify(
-            service => service.RecognizeCurrentScreenAsync(
-                It.IsAny<CancellationToken>()),
-            Times.Exactly(2));
-
-        snapshotFactoryMock.Verify(
-            factory => factory.Create(
-                It.IsAny<string>(),
-                ocrResult),
-            Times.Exactly(2));
-
-        freshnessGuardMock.Verify(
-            guard => guard.MarkCurrent(
-                It.IsAny<string>()),
-            Times.Exactly(2));
-
-        executionStateAccessorMock.Verify(
-            accessor => accessor.Push(
-                It.IsAny<OcrGroundedPlannerExecutionState>()),
-            Times.Exactly(2));
-
-        ocrServiceMock.VerifyNoOtherCalls();
-        snapshotFactoryMock.VerifyNoOtherCalls();
-        freshnessGuardMock.VerifyNoOtherCalls();
-        executionStateAccessorMock.VerifyNoOtherCalls();
+        VerifyNoOcrCapture();
     }
 
-    private static OcrResult CreateOcrResult()
+    [Fact]
+    public async Task CreateAsync_ShouldNeverCaptureOrRecognizeAnotherScreen()
+    {
+        OcrResult ocrResult =
+            CreateOcrResult(
+                "Observation OCR");
+
+        IAndroidScreenObservation observation =
+            CreateObservation(
+                ocrResult);
+
+        OcrGroundedSnapshot snapshot =
+            CreateSnapshot(
+                "ocr-snapshot-00000001");
+
+        Mock<IDisposable> leaseMock =
+            CreateLeaseMock();
+
+        SetupSuccessfulScopeCreation(
+            ocrResult,
+            snapshot,
+            leaseMock.Object);
+
+        OcrGroundedPlannerExecutionScopeFactory sut =
+            CreateSut();
+
+        IOcrGroundedPlannerExecutionScope scope =
+            await sut.CreateAsync(
+                observation);
+
+        VerifyNoOcrCapture();
+
+        scope.Dispose();
+
+        leaseMock.Verify(
+            lease =>
+                lease.Dispose(),
+            Times.Once);
+    }
+
+    private OcrGroundedPlannerExecutionScopeFactory CreateSut()
+    {
+        return new OcrGroundedPlannerExecutionScopeFactory(
+            _androidScreenOcrServiceMock.Object,
+            _snapshotFactoryMock.Object,
+            _freshnessGuardMock.Object,
+            _executionStateAccessorMock.Object);
+    }
+
+    private static IAndroidScreenObservation CreateObservation(
+        OcrResult ocrResult)
+    {
+        Mock<IAndroidScreenObservation> observationMock =
+            new(MockBehavior.Strict);
+
+        observationMock
+            .SetupGet(observation =>
+                observation.OcrResult)
+            .Returns(ocrResult);
+
+        return observationMock.Object;
+    }
+
+    private static OcrResult CreateOcrResult(
+        string text)
     {
         return new OcrResult(
-            string.Empty,
+            text,
             Array.Empty<OcrTextLine>());
     }
 
@@ -677,5 +828,67 @@ public sealed class OcrGroundedPlannerExecutionScopeFactoryTests
         return new OcrGroundedSnapshot(
             snapshotId,
             Array.Empty<OcrGroundedTarget>());
+    }
+
+
+    private static Mock<IDisposable> CreateLeaseMock()
+    {
+        Mock<IDisposable> leaseMock =
+            new(MockBehavior.Strict);
+
+        leaseMock
+            .Setup(lease =>
+                lease.Dispose());
+
+        return leaseMock;
+    }
+
+    private void SetupSuccessfulScopeCreation(
+        OcrResult ocrResult,
+        OcrGroundedSnapshot snapshot,
+        IDisposable lease)
+    {
+        _snapshotFactoryMock
+            .Setup(factory =>
+                factory.Create(
+                    snapshot.SnapshotId,
+                    It.Is<OcrResult>(
+                        candidate =>
+                            ReferenceEquals(
+                                candidate,
+                                ocrResult))))
+            .Returns(snapshot);
+
+        _freshnessGuardMock
+            .Setup(guard =>
+                guard.MarkCurrent(
+                    snapshot.SnapshotId));
+
+        _executionStateAccessorMock
+            .Setup(accessor =>
+                accessor.Push(
+                    It.Is<
+                        OcrGroundedPlannerExecutionState>(
+                        state =>
+                            ReferenceEquals(
+                                state.Snapshot,
+                                snapshot))))
+            .Returns(lease);
+    }
+
+    private void VerifyNoOcrCapture()
+    {
+        _androidScreenOcrServiceMock.Verify(
+            service =>
+                service.RecognizeCurrentScreenAsync(
+                    It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        _androidScreenOcrServiceMock.Verify(
+            service =>
+                service.RecognizeAsync(
+                    It.IsAny<ReadOnlyMemory<byte>>(),
+                    It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }
