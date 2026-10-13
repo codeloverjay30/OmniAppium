@@ -1,4 +1,3 @@
-
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
@@ -45,10 +44,22 @@ public sealed class AndroidScreenStabilityGuard
     }
 
     /// <summary>
+    /// Waits for stability while preserving the original result contract.
+    /// </summary>
+    public async Task<ScreenStabilityResult> WaitForStabilityAsync(
+        ScreenStabilityOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        StableScreenCaptureResult capture = await CaptureStableAsync(
+            options, cancellationToken).ConfigureAwait(false);
+        return capture.Stability;
+    }
+
+    /// <summary>
     /// Samples screenshots until enough consecutive frame pairs match,
     /// the timeout expires, or cancellation is requested.
     /// </summary>
-    public async Task<ScreenStabilityResult> WaitForStabilityAsync(
+    public async Task<StableScreenCaptureResult> CaptureStableAsync(
         ScreenStabilityOptions options,
         CancellationToken cancellationToken = default)
     {
@@ -201,7 +212,7 @@ public sealed class AndroidScreenStabilityGuard
             {
                 return Complete(
                     logger, true, false, samples, matches,
-                    started);
+                    started, previous);
             }
 
             if (remaining <= TimeSpan.Zero)
@@ -255,13 +266,14 @@ public sealed class AndroidScreenStabilityGuard
     /// <summary>
     /// Records the final stability decision and creates its result.
     /// </summary>
-    private ScreenStabilityResult Complete(
+    private StableScreenCaptureResult Complete(
         ILogger logger,
         bool stable,
         bool timedOut,
         int samples,
         int matches,
-        long started)
+        long started,
+        byte[]? validatedFrame = null)
     {
         TimeSpan elapsed =
             _timeProvider.GetElapsedTime(started);
@@ -291,9 +303,8 @@ public sealed class AndroidScreenStabilityGuard
                 elapsed.TotalMilliseconds);
         }
 
-        return new ScreenStabilityResult(
-            stable,
-            timedOut,
-            samples);
+        return new StableScreenCaptureResult(
+            new ScreenStabilityResult(stable, timedOut, samples),
+            stable ? validatedFrame : null);
     }
 }

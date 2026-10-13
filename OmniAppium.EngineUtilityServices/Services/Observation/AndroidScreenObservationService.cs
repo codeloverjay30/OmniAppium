@@ -119,10 +119,12 @@ public sealed class AndroidScreenObservationService
     private async Task<IAndroidScreenObservation> ObserveLegacyAsync(
         CancellationToken cancellationToken)
     {
-        ScreenStabilityResult stability =
-            await _legacyGuard.WaitForStabilityAsync(
+        StableScreenCaptureResult capture =
+            await _legacyGuard.CaptureStableAsync(
                 _legacyOptions,
                 cancellationToken).ConfigureAwait(false);
+
+        ScreenStabilityResult stability = capture.Stability;
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -132,7 +134,7 @@ public sealed class AndroidScreenObservationService
                 $"Android screen stability timeout after {stability.SampleCount} samples.");
         }
 
-        byte[] image = CaptureChecked();
+        byte[] image = capture.GetImageBytes();
         cancellationToken.ThrowIfCancellationRequested();
 
         OcrResult result = await _ocr.RecognizeAsync(
