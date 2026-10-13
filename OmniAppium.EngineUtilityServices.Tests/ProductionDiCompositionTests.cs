@@ -16,10 +16,12 @@ using Moq;
 using OmniAppium.EngineUtilityService.Services.Click;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Utilities;
+using OmniAppium.EngineUtilityServices.Models.Stability;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
 using OmniAppium.EngineUtilityServices.Services.Observation;
 using OmniAppium.EngineUtilityServices.Services.OCR;
 using OmniAppium.EngineUtilityServices.Services.Planner;
+using OmniAppium.EngineUtilityServices.Services.Stability;
 using OmniAppiumDemo.DependencyInjection;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
@@ -165,6 +167,28 @@ public sealed class ProductionDiCompositionTests
         services.AddSingleton<
             IOcrGroundedPlannerExecutionScopeFactory,
             OcrGroundedPlannerExecutionScopeFactory>();
+
+        services.AddSingleton<IScreenFrameComparer, ScreenFrameComparer>();
+
+        services.AddSingleton<
+            IAndroidScreenStabilityGuard,
+            AndroidScreenStabilityGuard>();
+
+        services.AddSingleton<
+            IScreenFrameDifferenceAnalyzer,
+            ScreenFrameDifferenceAnalyzer>();
+    
+
+        services.AddSingleton<
+            IOcrTargetStabilityEvaluatorFactory,
+            OcrTargetStabilityEvaluatorFactory>();
+    
+
+        services.AddSingleton<
+            IOcrObservationLineNormalizer,
+            OcrObservationLineNormalizer>();
+    
+        services.AddSingleton(new ScreenStabilityOptions());
 
         // Act.
         using ServiceProvider provider =
