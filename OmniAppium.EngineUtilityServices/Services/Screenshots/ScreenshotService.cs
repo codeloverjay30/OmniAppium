@@ -7,6 +7,7 @@ using OmniAppium.BaseUtilityService;
 using OmniAppium.ConfigUtilityService.Extensions;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Appium.Android;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
@@ -122,27 +123,48 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
         /// </exception>
         private void TakeScreenshotCore()
         {
-            ClearBitmapsCore();
-
-            OpenQA.Selenium.Screenshot? screenshot =
-                Driver.GetScreenshot();
-
-            if (screenshot is null)
+            try
             {
-                throw new InvalidOperationException(
-                    "The Appium driver returned a null screenshot.");
+                ClearBitmapsCore();
+                var stopwatch = Stopwatch.StartNew();
+                _logger.LogDebug("Screenshot capture started.");
+
+                OpenQA.Selenium.Screenshot? screenshot =
+                    Driver.GetScreenshot();
+
+                if (screenshot is null)
+                {
+                    throw new InvalidOperationException(
+                        "The Appium driver returned a null screenshot.");
+                }
+
+                byte[] rawBytes = screenshot.AsByteArray;
+
+                if (rawBytes.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        "The captured screenshot contains no image data.");
+                }
+
+                _rawScreenshot = screenshot;
+                _hasBeenCropped = false;
+
+                stopwatch.Stop();
+
+                _logger.LogInformation(
+                    "Screenshot capture finished. DurationMs={DurationMs}",
+                    stopwatch.Elapsed.TotalMilliseconds);
+
+                _logger.LogInformation(
+                    "Screenshot captured. EncodedBytes={EncodedBytes}",
+                    rawBytes.Length);
+
             }
-
-            byte[] rawBytes = screenshot.AsByteArray;
-
-            if (rawBytes.Length == 0)
+            catch (Exception ex)
             {
-                throw new InvalidOperationException(
-                    "The captured screenshot contains no image data.");
-            }
-
-            _rawScreenshot = screenshot;
-            _hasBeenCropped = false;
+                _logger.LogError(ex, "Failed to capture screenshot from the Appium driver.");
+                throw;
+            }         
         }
 
         /// <inheritdoc/>
