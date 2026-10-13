@@ -63,9 +63,11 @@ public sealed class AndroidScreenStabilityGuardTests
 
         var sut = CreateSut(screenshots, comparer);
 
-        ScreenStabilityResult result =
-            await sut.WaitForStabilityAsync(CreateOptions());
+        var captureResult =
+            await sut.CaptureStableAsync(CreateOptions());
 
+        var result = captureResult.Stability;
+        
         result.IsStable.Should().BeTrue();
         result.TimedOut.Should().BeFalse();
         result.SampleCount.Should().Be(3);
@@ -101,9 +103,11 @@ public sealed class AndroidScreenStabilityGuardTests
 
         var sut = CreateSut(screenshots, comparer);
 
-        ScreenStabilityResult result =
-            await sut.WaitForStabilityAsync(
+        var captureResult =
+            await sut.CaptureStableAsync(
                 CreateOptions(timeoutMs: 30));
+
+        var result = captureResult.Stability;
 
         result.IsStable.Should().BeFalse();
         result.TimedOut.Should().BeTrue();
@@ -122,9 +126,11 @@ public sealed class AndroidScreenStabilityGuardTests
 
         var sut = CreateSut(screenshots, comparer);
 
-        ScreenStabilityResult result =
-            await sut.WaitForStabilityAsync(
+        var captureResult =
+            await sut.CaptureStableAsync(
                 CreateOptions(timeoutMs: 30));
+
+        var result = captureResult.Stability;
 
         result.IsStable.Should().BeFalse();
         result.TimedOut.Should().BeTrue();
@@ -163,8 +169,10 @@ public sealed class AndroidScreenStabilityGuardTests
 
         var sut = CreateSut(screenshots, comparer);
 
-        ScreenStabilityResult result =
-            await sut.WaitForStabilityAsync(CreateOptions());
+        var captureResult =
+            await sut.CaptureStableAsync(CreateOptions());
+
+        var result = captureResult.Stability;
 
         result.IsStable.Should().BeTrue();
         result.TimedOut.Should().BeFalse();
@@ -183,7 +191,7 @@ public sealed class AndroidScreenStabilityGuardTests
         cts.Cancel();
 
         Action act = () =>
-            sut.WaitForStabilityAsync(
+            sut.CaptureStableAsync(
                 CreateOptions(),
                 cts.Token).GetAwaiter().GetResult();
 
@@ -210,7 +218,7 @@ public sealed class AndroidScreenStabilityGuardTests
         var sut = CreateSut(screenshots, comparer);
 
         Action act = () =>
-            sut.WaitForStabilityAsync(
+            sut.CaptureStableAsync(
                 CreateOptions()).GetAwaiter().GetResult();
 
         act.Should()
@@ -239,7 +247,7 @@ public sealed class AndroidScreenStabilityGuardTests
         var sut = CreateSut(screenshots, comparer);
 
         Action act = () =>
-            sut.WaitForStabilityAsync(
+            sut.CaptureStableAsync(
                 CreateOptions()).GetAwaiter().GetResult();
 
         act.Should()
@@ -256,7 +264,7 @@ public sealed class AndroidScreenStabilityGuardTests
         var sut = CreateSut(screenshots, comparer);
 
         Action act = () =>
-            sut.WaitForStabilityAsync(null!)
+            sut.CaptureStableAsync(null!)
                 .GetAwaiter().GetResult();
 
         act.Should()
@@ -276,7 +284,7 @@ public sealed class AndroidScreenStabilityGuardTests
         var sut = CreateSut(screenshots, comparer);
 
         Action act = () =>
-            sut.WaitForStabilityAsync(
+            sut.CaptureStableAsync(
                 CreateOptions(requiredMatches: requiredMatches))
                 .GetAwaiter().GetResult();
 
@@ -320,9 +328,11 @@ public sealed class AndroidScreenStabilityGuardTests
 
         var sut = CreateSut(screenshots, comparer);
 
-        ScreenStabilityResult result =
-            await sut.WaitForStabilityAsync(
+        var captureResult =
+            await sut.CaptureStableAsync(
                 CreateOptions(requiredMatches: 1));
+
+        var result = captureResult.Stability;
 
         result.IsStable.Should().BeTrue();
         result.SampleCount.Should().Be(2);

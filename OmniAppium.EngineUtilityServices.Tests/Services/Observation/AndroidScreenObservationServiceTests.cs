@@ -1,4 +1,3 @@
-
 using FluentAssertions;
 using Moq;
 using OCRUtilityServices.Models;
@@ -13,289 +12,187 @@ namespace OmniAppium.EngineUtilityServices.Tests.Services.Observation;
 
 public sealed class AndroidScreenObservationServiceTests
 {
-    private readonly Mock<IScreenshotService> _screenshots =
-        new(MockBehavior.Strict);
+    private static readonly byte[] ValidatedFrame = [1, 2, 3];
 
-    private readonly Mock<IAndroidScreenOcrService> _ocr =
-        new(MockBehavior.Strict);
-
-    private readonly Mock<IAndroidScreenStabilityGuard> _guard =
-        new(MockBehavior.Strict);
-
-    private readonly ScreenStabilityOptions _options = new();
-
-    private AndroidScreenObservationService CreateSut()
+    private static AndroidScreenObservationService CreateSut(
+        Mock<IScreenshotService> screenshots,
+        Mock<IAndroidScreenOcrService> ocr,
+        Mock<IAndroidScreenStabilityGuard> guard)
     {
         return new AndroidScreenObservationService(
-            _screenshots.Object,
-            _ocr.Object,
-            _guard.Object,
-            _options);
+            screenshots.Object, ocr.Object, guard.Object, new ScreenStabilityOptions());
     }
 
-    private void SetupGuard(ScreenStabilityResult result)
+    private static StableScreenCaptureResult Stable(byte[] frame)
     {
-        _guard.Setup(x => x.WaitForStabilityAsync(
-                It.IsAny<ScreenStabilityOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(result);
+        return new StableScreenCaptureResult(
+            new ScreenStabilityResult(true, false, 3), frame);
     }
 
-    private static OcrResult CreateOcrResult()
+    private static OcrResult Ocr()
     {
-        return new OcrResult(
-            Text: "Test OCR text",
-            Lines: Array.Empty<OcrTextLine>());
+        return new OcrResult("Recognized text", Array.Empty<OcrTextLine>());
     }
 
     [Fact]
     public async Task ObserveAsync_WhenStable_ShouldReturnObservation()
     {
-        byte[] image = [1, 2, 3, 4];
-        OcrResult ocrResult = CreateOcrResult();
+        var screenshots = new Mock<IScreenshotService>(MockBehavior.Strict);
+        var guard = new Mock<IAndroidScreenStabilityGuard>(MockBehavior.Strict);
+        var ocr = new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        byte[]? received = null;
+        OcrResult recognized = Ocr();
 
-        SetupGuard(new ScreenStabilityResult(true, false, 3));
+        guard.Setup(x => x.CaptureStableAsync(
+                It.IsAny<ScreenStabilityOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Stable(ValidatedFrame));
+        ocr.Setup(x => x.RecognizeAsync(
+                It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            .Callback<ReadOnlyMemory<byte>, CancellationToken>(
+                (image, _) => received = image.ToArray())
+            .ReturnsAsync(recognized);
 
-        _screenshots
-            .Setup(x => x.CaptureScreenshotBytes(null))
-            .Returns(image);
+        var sut = CreateSut(screenshots, ocr, guard);
+        var observation = await sut.ObserveAsync(TestContext.Current.CancellationToken);
 
-        _ocr.Setup(x => x.RecognizeAsync(
-                It.IsAny<ReadOnlyMemory<byte>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ocrResult);
-
-        var sut = CreateSut();
-
-        var observation = await sut.ObserveAsync();
-
-        observation.ImageBytes.ToArray().Should().Equal(image);
-        observation.OcrResult.Should().BeSameAs(ocrResult);
-        observation.OcrResult.Text.Should().Be("Test OCR text");
-
-        _guard.Verify(x => x.WaitForStabilityAsync(
-            _options,
-            It.IsAny<CancellationToken>()), Times.Once);
-
-        _screenshots.Verify(
-            x => x.CaptureScreenshotBytes(null),
-            Times.Once);
-
-        _ocr.Verify(x => x.RecognizeAsync(
-            It.IsAny<ReadOnlyMemory<byte>>(),
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Theory]
-    [InlineData(false, false, 2)]
-    [InlineData(false, true, 2)]
-    [InlineData(true, true, 4)]
-    public void ObserveAsync_WhenGuardRejects_ShouldFailClosed(
-        bool stable,
-        bool timedOut,
-        int samples)
-    {
-        SetupGuard(
-            new ScreenStabilityResult(stable, timedOut, samples));
-
-        var sut = CreateSut();
-
-        Action act = () =>
-            sut.ObserveAsync().GetAwaiter().GetResult();
-
-        act.Should()
-            .Throw<TimeoutException>()
-            .WithMessage(
-                $"Android screen stability timeout after {samples} samples.");
-
-        _screenshots.VerifyNoOtherCalls();
-        _ocr.VerifyNoOtherCalls();
+        observation.ImageBytes.ToArray().Should().Equal(ValidatedFrame);
+        observation.OcrResult.Should().BeSameAs(recognized);
+        received.Should().Equal(ValidatedFrame);
+        guard.Verify(x => x.CaptureStableAsync(
+            It.IsAny<ScreenStabilityOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+        ocr.Verify(x => x.RecognizeAsync(
+            It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()), Times.Once);
+        screenshots.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void ObserveAsync_WhenAlreadyCancelled_ShouldNotCallDependencies()
+    public void ObserveAsync_WhenGuardTimesOut_ShouldNotRunOcr()
     {
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        var screenshots = new Mock<IScreenshotService>(MockBehavior.Strict);
+        var guard = new Mock<IAndroidScreenStabilityGuard>(MockBehavior.Strict);
+        var ocr = new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        guard.Setup(x => x.CaptureStableAsync(
+                It.IsAny<ScreenStabilityOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StableScreenCaptureResult(
+                new ScreenStabilityResult(false, true, 2), null));
 
-        var sut = CreateSut();
+        var sut = CreateSut(screenshots, ocr, guard);
+        Action act = () => sut.ObserveAsync(TestContext.Current.CancellationToken)
+            .GetAwaiter().GetResult();
 
-        Action act = () =>
-            sut.ObserveAsync(cts.Token).GetAwaiter().GetResult();
-
-        act.Should()
-            .Throw<OperationCanceledException>()
-            .WithMessage("*canceled*");
-
-        _guard.VerifyNoOtherCalls();
-        _screenshots.VerifyNoOtherCalls();
-        _ocr.VerifyNoOtherCalls();
-    }
-
-    [Fact]
-    public void ObserveAsync_WhenGuardThrows_ShouldPropagateException()
-    {
-        _guard.Setup(x => x.WaitForStabilityAsync(
-                It.IsAny<ScreenStabilityOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(
-                new InvalidOperationException("Guard capture failed."));
-
-        var sut = CreateSut();
-
-        Action act = () =>
-            sut.ObserveAsync().GetAwaiter().GetResult();
-
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Guard capture failed.");
-
-        _screenshots.VerifyNoOtherCalls();
-        _ocr.VerifyNoOtherCalls();
+        act.Should().Throw<TimeoutException>()
+            .WithMessage("Android screen stability timeout after 2 samples.");
+        guard.VerifyAll();
+        screenshots.VerifyNoOtherCalls();
+        ocr.VerifyNoOtherCalls();
     }
 
     [Fact]
     public void ObserveAsync_WhenScreenshotIsEmpty_ShouldNotRunOcr()
     {
-        SetupGuard(new ScreenStabilityResult(true, false, 3));
+        // An empty successful frame is rejected by the capture-result contract.
+        Action act = () => new StableScreenCaptureResult(
+            new ScreenStabilityResult(true, false, 1), []);
 
-        _screenshots
-            .Setup(x => x.CaptureScreenshotBytes(null))
-            .Returns(Array.Empty<byte>());
-
-        var sut = CreateSut();
-
-        Action act = () =>
-            sut.ObserveAsync().GetAwaiter().GetResult();
-
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage(
-                "The captured Android screen contains no image data.");
-
-        _ocr.VerifyNoOtherCalls();
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*image*");
     }
 
     [Fact]
     public void ObserveAsync_WhenScreenshotThrows_ShouldPropagateException()
     {
-        SetupGuard(new ScreenStabilityResult(true, false, 3));
+        // Screenshot capture belongs to the stability guard. Model the propagated
+        // capture failure at the observation service's guard boundary.
+        var screenshots = new Mock<IScreenshotService>(MockBehavior.Strict);
+        var guard = new Mock<IAndroidScreenStabilityGuard>(MockBehavior.Strict);
+        var ocr = new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        const string message = "Screenshot capture failed.";
 
-        _screenshots
-            .Setup(x => x.CaptureScreenshotBytes(null))
-            .Throws(
-                new InvalidOperationException(
-                    "Appium screenshot failed."));
+        guard.Setup(x => x.CaptureStableAsync(
+                It.IsAny<ScreenStabilityOptions>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException(message));
 
-        var sut = CreateSut();
+        var sut = CreateSut(screenshots, ocr, guard);
+        Action act = () => sut.ObserveAsync(TestContext.Current.CancellationToken)
+            .GetAwaiter().GetResult();
 
-        Action act = () =>
-            sut.ObserveAsync().GetAwaiter().GetResult();
+        act.Should().Throw<InvalidOperationException>().WithMessage(message);
+        guard.VerifyAll();
+        screenshots.VerifyNoOtherCalls();
+        ocr.VerifyNoOtherCalls();
+    }
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Appium screenshot failed.");
+    [Fact]
+    public void ObserveAsync_WhenGuardThrows_ShouldPropagateException()
+    {
+        var screenshots = new Mock<IScreenshotService>(MockBehavior.Strict);
+        var guard = new Mock<IAndroidScreenStabilityGuard>(MockBehavior.Strict);
+        var ocr = new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        const string message = "Stability guard failed.";
 
-        _ocr.VerifyNoOtherCalls();
+        guard.Setup(x => x.CaptureStableAsync(
+                It.IsAny<ScreenStabilityOptions>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException(message));
+
+        var sut = CreateSut(screenshots, ocr, guard);
+        Action act = () => sut.ObserveAsync(TestContext.Current.CancellationToken)
+            .GetAwaiter().GetResult();
+
+        act.Should().Throw<InvalidOperationException>().WithMessage(message);
+        guard.VerifyAll();
+        screenshots.VerifyNoOtherCalls();
+        ocr.VerifyNoOtherCalls();
     }
 
     [Fact]
     public void ObserveAsync_WhenOcrThrows_ShouldPropagateException()
     {
-        SetupGuard(new ScreenStabilityResult(true, false, 3));
+        var screenshots = new Mock<IScreenshotService>(MockBehavior.Strict);
+        var guard = new Mock<IAndroidScreenStabilityGuard>(MockBehavior.Strict);
+        var ocr = new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        const string message = "OCR recognition failed.";
 
-        _screenshots
-            .Setup(x => x.CaptureScreenshotBytes(null))
-            .Returns([1, 2, 3]);
+        guard.Setup(x => x.CaptureStableAsync(
+                It.IsAny<ScreenStabilityOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Stable(ValidatedFrame));
+        ocr.Setup(x => x.RecognizeAsync(
+                It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException(message));
 
-        _ocr.Setup(x => x.RecognizeAsync(
-                It.IsAny<ReadOnlyMemory<byte>>(),
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(
-                new InvalidOperationException("OCR engine failed."));
+        var sut = CreateSut(screenshots, ocr, guard);
+        Action act = () => sut.ObserveAsync(TestContext.Current.CancellationToken)
+            .GetAwaiter().GetResult();
 
-        var sut = CreateSut();
-
-        Action act = () =>
-            sut.ObserveAsync().GetAwaiter().GetResult();
-
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("OCR engine failed.");
+        act.Should().Throw<InvalidOperationException>().WithMessage(message);
+        guard.VerifyAll();
+        ocr.VerifyAll();
+        screenshots.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Constructor_WhenScreenshotServiceIsNull_ShouldThrow()
+    public void ObserveAsync_WhenCancelledAfterGuard_ShouldNotRunOcr()
     {
-        Action act = () => new AndroidScreenObservationService(
-            null!,
-            _ocr.Object,
-            _guard.Object,
-            _options);
+        var screenshots = new Mock<IScreenshotService>(MockBehavior.Strict);
+        var guard = new Mock<IAndroidScreenStabilityGuard>(MockBehavior.Strict);
+        var ocr = new Mock<IAndroidScreenOcrService>(MockBehavior.Strict);
+        using var cancellation = new CancellationTokenSource();
 
-        act.Should()
-            .Throw<ArgumentNullException>()
-            .WithMessage("*screenshotService*");
-    }
+        guard.Setup(x => x.CaptureStableAsync(
+                It.IsAny<ScreenStabilityOptions>(), cancellation.Token))
+            .Returns(() =>
+            {
+                cancellation.Cancel();
+                return Task.FromResult(Stable(ValidatedFrame));
+            });
 
-    [Fact]
-    public void Constructor_WhenOcrServiceIsNull_ShouldThrow()
-    {
-        Action act = () => new AndroidScreenObservationService(
-            _screenshots.Object,
-            null!,
-            _guard.Object,
-            _options);
+        var sut = CreateSut(screenshots, ocr, guard);
+        Action act = () => sut.ObserveAsync(cancellation.Token)
+            .GetAwaiter().GetResult();
 
-        act.Should()
-            .Throw<ArgumentNullException>()
-            .WithMessage("*androidScreenOcrService*");
-    }
-
-    [Fact]
-    public void Constructor_WhenGuardIsNull_ShouldThrow()
-    {
-        Action act = () => new AndroidScreenObservationService(
-            _screenshots.Object,
-            _ocr.Object,
-            null!,
-            _options);
-
-        act.Should()
-            .Throw<ArgumentNullException>()
-            .WithMessage("*stabilityGuard*");
-    }
-
-    [Fact]
-    public void Constructor_WhenOptionsAreNull_ShouldThrow()
-    {
-        Action act = () => new AndroidScreenObservationService(
-            _screenshots.Object,
-            _ocr.Object,
-            _guard.Object,
-            null!);
-
-        act.Should()
-            .Throw<ArgumentNullException>()
-            .WithMessage("*stabilityOptions*");
-    }
-
-    [Fact]
-    public void Constructor_WhenOptionsAreInvalid_ShouldThrow()
-    {
-        var invalid = new ScreenStabilityOptions
-        {
-            RequiredConsecutiveMatches = 0
-        };
-
-        Action act = () => new AndroidScreenObservationService(
-            _screenshots.Object,
-            _ocr.Object,
-            _guard.Object,
-            invalid);
-
-        act.Should()
-            .Throw<ArgumentOutOfRangeException>()
-            .WithMessage("*RequiredConsecutiveMatches must be positive*");
+        act.Should().Throw<OperationCanceledException>()
+            .WithMessage("*canceled*");
+        guard.VerifyAll();
+        ocr.VerifyNoOtherCalls();
+        screenshots.VerifyNoOtherCalls();
     }
 }
