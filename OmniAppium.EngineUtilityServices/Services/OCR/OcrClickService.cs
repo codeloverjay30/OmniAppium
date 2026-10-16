@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OmniAppium.EngineUtilityServices.Services.Grounding;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 using OCRUtilityServices.Models;
@@ -15,7 +16,9 @@ public sealed class OcrClickService(
     IAndroidScreenOcrService screenOcrService,
     IOcrTextMatcher ocrTextMatcher,
     IClickService clickService,
-    ILoggerFactoryBaseUtilityService loggerFactoryService)
+    ILoggerFactoryBaseUtilityService loggerFactoryService,
+    IGroundedClickAuthorizationService authorizationService,
+    IGroundedClickEvidenceProvider evidenceProvider)
     : IOcrClickService
 {
     private readonly ILogger _logger = loggerFactoryService.Logger;
@@ -43,15 +46,18 @@ public sealed class OcrClickService(
                 "OCR click timeout must be greater than zero.");
         }
 
-        OcrTextMatch targetMatch = await WaitForTextAsync(
+        (OcrTextMatch targetMatch, OcrResult observation) = await WaitForTextAsync(
             targetText,
             timeout,
             cancellationToken).ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        double x = targetMatch.Bounds.Center.X;
-        double y = targetMatch.Bounds.Center.Y;
+        ReviewedGroundTruth evidence = evidenceProvider.Resolve(observation, targetText);
+        (double x, double y) = authorizationService.Authorize(
+            targetMatch.Text,
+            evidenceProvider.ResolveConfidence(observation, targetMatch),
+            targetMatch.Bounds, evidence);
 
         ValidateCoordinates(x, y, targetText);
 
@@ -87,7 +93,7 @@ public sealed class OcrClickService(
     /// <exception cref="InvalidOperationException">
     /// Thrown when OCR results are ambiguous or contain unsafe geometry.
     /// </exception>
-    private async Task<OcrTextMatch> WaitForTextAsync(
+    private async Task<(OcrTextMatch Match, OcrResult Observation)> WaitForTextAsync(
         string targetText,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -122,7 +128,7 @@ public sealed class OcrClickService(
                     ValidateMatchBounds(match, targetText);
                     LogAttempt(attempt, stopwatch.ElapsedMilliseconds, result,
                         targetText, "MATCHED", null);
-                    return match;
+                    return (match, result);
                 }
                 catch (InvalidOperationException ex)
                     when (ex.Message ==
@@ -153,7 +159,7 @@ public sealed class OcrClickService(
                         LogAttempt(attempt, stopwatch.ElapsedMilliseconds, result,
                             targetText, "EXACT_LINE_FALLBACK", ex.Message);
 
-                        return fallback;
+                        return (fallback, result);
                     }
 
                     lastFailure =

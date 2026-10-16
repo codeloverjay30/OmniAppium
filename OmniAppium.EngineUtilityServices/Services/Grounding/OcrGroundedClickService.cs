@@ -1,4 +1,6 @@
 using CoordinateUtilityServices;
+using OCRUtilityServices.Models;
+using OCRUtilityServices.Services;
 using OmniAppium.EngineUtilityService.Services.Click;
 
 namespace OmniAppium.EngineUtilityServices.Services.Grounding;
@@ -11,6 +13,8 @@ public sealed class OcrGroundedClickService
 {
     private readonly IClickService _clickService;
     private readonly IOcrGroundedSnapshotFreshnessGuard _freshnessGuard;
+    private readonly IGroundedClickAuthorizationService _authorizationService;
+    private readonly IGroundedClickEvidenceProvider _evidenceProvider;
 
     /// <summary>
     /// Initializes a new instance of the
@@ -24,13 +28,17 @@ public sealed class OcrGroundedClickService
     /// </param>
     public OcrGroundedClickService(
         IClickService clickService,
-        IOcrGroundedSnapshotFreshnessGuard freshnessGuard)
+        IOcrGroundedSnapshotFreshnessGuard freshnessGuard,
+        IGroundedClickAuthorizationService authorizationService,
+        IGroundedClickEvidenceProvider evidenceProvider)
     {
         ArgumentNullException.ThrowIfNull(clickService);
         ArgumentNullException.ThrowIfNull(freshnessGuard);
 
         _clickService = clickService;
         _freshnessGuard = freshnessGuard;
+        _authorizationService = authorizationService ?? throw new ArgumentNullException(nameof(authorizationService));
+        _evidenceProvider = evidenceProvider ?? throw new ArgumentNullException(nameof(evidenceProvider));
     }
 
     /// <inheritdoc/>
@@ -81,13 +89,16 @@ public sealed class OcrGroundedClickService
                 $"OCR-grounded target '{targetId}' has zero-area bounds.");
         }
 
-        Point center = bounds.Center;
-
         using IOcrGroundedActionLease lease =
             _freshnessGuard.AcquireCurrent(snapshot);
 
-        _clickService.ClickAbsolute(
-            center.X,
-            center.Y);
+        ReviewedGroundTruth evidence = _evidenceProvider.Resolve(snapshot, target);
+        (double x, double y) = _authorizationService.Authorize(
+            target.Text,
+            _evidenceProvider.ResolveConfidence(snapshot, target),
+            bounds,
+            evidence);
+
+        _clickService.ClickAbsolute(x, y);
     }
 }

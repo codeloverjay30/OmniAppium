@@ -1,7 +1,9 @@
 using System.IO.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OCRUtilityServices.Services;
 using OmniAppium.EngineUtilityServices.Services.OCR;
+using OmniAppium.EngineUtilityServices.Services.Grounding;
 
 namespace OmniAppiumDemo.DependencyInjection;
 
@@ -42,6 +44,8 @@ public static class OcrServiceCollectionExtensions
             IGroundedClickAuthorizationService,
             GroundedClickAuthorizationService>();
     
+        services.TryAddSingleton<IGroundedClickEvidenceProvider, RejectingGroundedClickEvidenceProvider>();
+
         return services;
     }
 }
