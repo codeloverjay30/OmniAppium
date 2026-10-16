@@ -10,6 +10,7 @@ namespace OmniAppiumDemo.DependencyInjection;
 /// </summary>
 public static class OcrServiceCollectionExtensions
 {
+    /// <summary>
     /// Registers the core OCR utility services required by the application.
     /// </summary>
     /// <param name="services">
@@ -31,6 +32,16 @@ public static class OcrServiceCollectionExtensions
             IOcrTextMatcher,
             OcrTextMatcher>();
 
+        services.AddSingleton<ReviewedPaddedTextGeometryPolicy>();
+
+        services.AddSingleton<IGroundedClickValidator>(sp =>
+            new GroundedClickValidator(
+                sp.GetRequiredService<ReviewedPaddedTextGeometryPolicy>()));
+
+        services.AddSingleton<
+            IGroundedClickAuthorizationService,
+            GroundedClickAuthorizationService>();
+    
         return services;
     }
 }

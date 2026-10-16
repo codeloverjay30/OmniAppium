@@ -1,8 +1,20 @@
-
 #define DEVELOPING
 #define IS_LOGGING
 #define GEMINI_READ_ONLY_SMOKE_TEST
 // #define AUTO_EXECUTE_TASKS
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using OCRUtilityServices.Models;
+using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.EngineUtilityService.Utilities;
+using OmniAppium.EngineUtilityServices.Models.Observation;
+using OmniAppium.EngineUtilityServices.Models.Stability;
+using OmniAppium.EngineUtilityServices.Services.Observation;
+using OmniAppium.EngineUtilityServices.Services.OCR;
+using OmniAppium.EngineUtilityServices.Services.Planner;
+using OmniAppium.EngineUtilityServices.Services.Stability;
+using OmniAppium.EngineUtilityServices.Workflows;
 
 using AiUtility.AiBaseUtilityServices.Models;
 using AiUtility.AiBaseUtilityServices.Services;
@@ -18,29 +30,20 @@ using AiUtility.GeminiUtilityServices.Services;
 using AiUtility.ToolKits.Abstractions;
 using AiUtility.ToolKits.Execution;
 using AiUtility.ToolKits.Services;
-using CommonModels;
+        using CommonModels;
 using CoordinateUtilityServices;
 using EnumUtilityServices;
 using ExpressionTreeUtilityServices;
 using JsonUtilityServices;
 using LoggerFactoryUtilityServices;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using OCRUtilityServices.Models;
+
 using OmniAppium.ConfigUtilityService.Controllers;
 using OmniAppium.ConfigUtilityService.Factories;
-using OmniAppium.ConfigUtilityService.Models;
-using OmniAppium.ConfigUtilityService.Services;
 using OmniAppium.EngineUtilityService.Services.Click;
 using OmniAppium.EngineUtilityService.Services.Screen;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Services.Wait;
-using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
-using OmniAppium.EngineUtilityServices.Services.Observation;
-using OmniAppium.EngineUtilityServices.Services.OCR;
-using OmniAppium.EngineUtilityServices.Services.Planner;
-using OmniAppium.EngineUtilityServices.Workflows;
 using OmniAppium.LogServices;
 using OmniAppiumDemo.DependencyInjection;
 using ReflectionUtilityServices;
@@ -49,139 +52,153 @@ using ThreadLevelLockingUtilityServices;
 using ThreadLevelLockingUtilityServices.Models;
 using TransversalUtilityServices;
 using TypeUtilityServices;
+using OmniAppium.EngineUtilityServices.Interfaces;
+using OmniAppiumDemo.Games.BeautyThreeKingdoms.Startup;
+using OmniAppium.EngineUtilityServices.Startup;
+
+
+namespace OmniAppiumDemo;
+
+/// <summary>
+/// Provides the ROI and OCR observation entry point for an existing Appium host.
+/// </summary>
+public static class Program
+{
+    public static async Task Main(string[] args)
+    {
 
 #if DEVELOPING
 
-// ============================================================
-// 1. Application paths.
-// ============================================================
+        // ============================================================
+        // 1. Application paths.
+        // ============================================================
 
-string appDir =
-    AppDomain.CurrentDomain.BaseDirectory;
+        string appDir =
+            AppDomain.CurrentDomain.BaseDirectory;
 
-string developmentDeviceConfigPath =
-    Path.Combine(appDir, "development-device.config.json5");
+        string developmentDeviceConfigPath =
+            Path.Combine(appDir, "development-device.config.json5");
 
-string appConfigPath =
-    Path.Combine(appDir, "app.config.json5");
+        string appConfigPath =
+            Path.Combine(appDir, "app.config.json5");
 
-string appiumConfigPath =
-    Path.Combine(appDir, "appium.config.json5");
+        string appiumConfigPath =
+            Path.Combine(appDir, "appium.config.json5");
 
-string connectionConfigPath =
-    Path.Combine(appDir, "connection.config.json5");
+        string connectionConfigPath =
+            Path.Combine(appDir, "connection.config.json5");
 
-string gameConfigPath =
-    Path.Combine(appDir, "game.config.json5");
+        string gameConfigPath =
+            Path.Combine(appDir, "game.config.json5");
 
-string jobsConfigPath =
-    Path.Combine(appDir, "jobs.config.json5");
+        string jobsConfigPath =
+            Path.Combine(appDir, "jobs.config.json5");
 
-string geminiSecureConfigPath =
-    Path.Combine(appDir, "secure.config.json5");
+        string geminiSecureConfigPath =
+            Path.Combine(appDir, "secure.config.json5");
 
-string geminiConfigPath =
-    Path.Combine(appDir, "gemini.config.json5");
+        string geminiConfigPath =
+            Path.Combine(appDir, "gemini.config.json5");
 
-string logDirectory =
-    Path.Combine(appDir, "Logs");
+        string logDirectory =
+            Path.Combine(appDir, "Logs");
 
-string screenshotsDirectory =
-    Path.Combine(appDir, "Screenshots");
+        string screenshotsDirectory =
+            Path.Combine(appDir, "Screenshots");
 
-Directory.CreateDirectory(logDirectory);
-Directory.CreateDirectory(screenshotsDirectory);
+        Directory.CreateDirectory(logDirectory);
+        Directory.CreateDirectory(screenshotsDirectory);
 
-// ============================================================
-// 2. Logging.
-// ============================================================
+        // ============================================================
+        // 2. Logging.
+        // ============================================================
 
-var loggingConfigurationService =
-    new LoggingConfigurationService
-    {
-        LogDirectory = logDirectory
-    };
+        var loggingConfigurationService =
+            new LoggingConfigurationService
+            {
+                LogDirectory = logDirectory
+            };
 
-loggingConfigurationService.Configure(args);
+        loggingConfigurationService.Configure(args);
 
-var globalLoggerFactory =
-    loggingConfigurationService.LoggerFactory;
+        var globalLoggerFactory =
+            loggingConfigurationService.LoggerFactory;
 
-ILoggerFactoryBaseUtilityService loggerFactoryService =
-    new LoggerFactoryBaseUtilityService(
-        globalLoggerFactory);
+        ILoggerFactoryBaseUtilityService loggerFactoryService =
+            new LoggerFactoryBaseUtilityService(
+                globalLoggerFactory);
 
-ILogger logger =
-    loggerFactoryService.Logger;
+        ILogger logger =
+            loggerFactoryService.Logger;
 
-logger.LogInformation(
-    "Starting OmniAppium automation engine.");
+        logger.LogInformation(
+            "Starting OmniAppium automation engine.");
 
-// ============================================================
-// 3. Configuration.
-// ============================================================
+        // ============================================================
+        // 3. Configuration.
+        // ============================================================
 
-IAiConfigService geminiConfigService =
-    new AiConfigService
-    {
-        AiConfigPath = geminiConfigPath
-    };
+        IAiConfigService geminiConfigService =
+            new AiConfigService
+            {
+                AiConfigPath = geminiConfigPath
+            };
 
 #if AUTO_EXECUTE_TASKS || GEMINI_READ_ONLY_SMOKE_TEST
 
-GeminiApiOptions geminiApiOptions =
-    geminiConfigService.ReadData<GeminiApiOptions>();
+        GeminiApiOptions geminiApiOptions =
+            geminiConfigService.ReadData<GeminiApiOptions>();
 
-ArgumentNullException.ThrowIfNull(geminiApiOptions);
+        ArgumentNullException.ThrowIfNull(geminiApiOptions);
 
 #endif
 
-ITransversalService transversalService =
-    new DFSTransversalService();
+        ITransversalService transversalService =
+            new DFSTransversalService();
 
-var driverFactory =
-    new DriverFactory(
-        loggerFactoryService,
-        true)
-    {
-        DevelopmentDeviceConfig =
-            new ConfigBean<DevelopmentDeviceConfig>
+        var driverFactory =
+            new DriverFactory(
+                loggerFactoryService,
+                true)
             {
-                Path = developmentDeviceConfigPath
-            },
+                DevelopmentDeviceConfig =
+                    new ConfigBean<DevelopmentDeviceConfig>
+                    {
+                        Path = developmentDeviceConfigPath
+                    },
 
-        AppiumConfig =
-            new ConfigBean<AppiumConfig>
-            {
-                Path = appiumConfigPath
-            },
+                AppiumConfig =
+                    new ConfigBean<AppiumConfig>
+                    {
+                        Path = appiumConfigPath
+                    },
 
-        AppConfig =
-            new ConfigBean<AppConfig>
-            {
-                Path = appConfigPath
-            },
+                AppConfig =
+                    new ConfigBean<AppConfig>
+                    {
+                        Path = appConfigPath
+                    },
 
-        ConnectionConfig =
-            new ConfigBean<ConnectionConfig>
-            {
-                Path = connectionConfigPath
-            },
+                ConnectionConfig =
+                    new ConfigBean<ConnectionConfig>
+                    {
+                        Path = connectionConfigPath
+                    },
 
-        GameConfig =
-            new ConfigBean<GameConfig>
-            {
-                Path = gameConfigPath
-            },
+                GameConfig =
+                    new ConfigBean<GameConfig>
+                    {
+                        Path = gameConfigPath
+                    },
 
-        TransversalService = transversalService
-    };
+                TransversalService = transversalService
+            };
 
-driverFactory.Initialize();
+        driverFactory.Initialize();
 
-// ============================================================
-// 4. Load automation jobs only when required.
-// ============================================================
+        // ============================================================
+        // 4. Load automation jobs only when required.
+        // ============================================================
 
 #if AUTO_EXECUTE_TASKS
 
@@ -214,322 +231,399 @@ logger.LogInformation(
 
 #endif
 
-// ============================================================
-// 5. Create the Appium driver.
-// ============================================================
+        // ============================================================
+        // 5. Create the Appium driver.
+        // ============================================================
 
-var driver =
-    driverFactory.Create();
+        var driver =
+            driverFactory.Create();
 
-ArgumentNullException.ThrowIfNull(driver);
+        ArgumentNullException.ThrowIfNull(driver);
 
-var driverControlService =
-    new DriverControlService
-    {
-        Driver = driver
-    };
+        var driverControlService =
+            new DriverControlService
+            {
+                Driver = driver
+            };
 
-try
-{
-    // ========================================================
-    // 6. Runtime-owned Appium services.
-    // ========================================================
-
-    ScreenService screenService =
-        new AndroidScreenService
+        try
         {
-            Driver = driver
-        };
+            // ========================================================
+            // 6. Runtime-owned Appium services.
+            // ========================================================
 
-    var developmentDeviceConfig =
-        driverFactory.DevelopmentDeviceConfig.Data;
+            ScreenService screenService =
+                new AndroidScreenService
+                {
+                    Driver = driver
+                };
 
-    ArgumentNullException.ThrowIfNull(
-        developmentDeviceConfig);
+            var developmentDeviceConfig =
+                driverFactory.DevelopmentDeviceConfig.Data;
 
-    ArgumentNullException.ThrowIfNull(
-        developmentDeviceConfig.ScreenSize);
+            ArgumentNullException.ThrowIfNull(
+                developmentDeviceConfig);
 
-    var referenceScreenSize =
-        developmentDeviceConfig.ScreenSize;
+            ArgumentNullException.ThrowIfNull(
+                developmentDeviceConfig.ScreenSize);
 
-    var currentScreenSize =
-        screenService.GetFreshScreenSize();
+            var referenceScreenSize =
+                developmentDeviceConfig.ScreenSize;
 
-    logger.LogInformation(
-        "Reference resolution: {Width}x{Height}",
-        referenceScreenSize.Width,
-        referenceScreenSize.Height);
+            var currentScreenSize =
+                screenService.GetFreshScreenSize();
 
-    logger.LogInformation(
-        "Current resolution: {Width}x{Height}",
-        currentScreenSize.Width,
-        currentScreenSize.Height);
+            logger.LogInformation(
+                "Reference resolution: {Width}x{Height}",
+                referenceScreenSize.Width,
+                referenceScreenSize.Height);
 
-    IResolutionScaler resolutionScaler =
-        new ResolutionScaler(
-            referenceScreenSize.Width,
-            referenceScreenSize.Height,
-            currentScreenSize.Width,
-            currentScreenSize.Height);
+            logger.LogInformation(
+                "Current resolution: {Width}x{Height}",
+                currentScreenSize.Width,
+                currentScreenSize.Height);
 
-    ClickService clickService =
-        new ClickService(
-            loggerFactoryService,
-            true)
-        {
-            ScreenService = screenService,
-            Scaler = resolutionScaler
-        };
+            IResolutionScaler resolutionScaler =
+                new ResolutionScaler(
+                    referenceScreenSize.Width,
+                    referenceScreenSize.Height,
+                    currentScreenSize.Width,
+                    currentScreenSize.Height);
 
-    WaitService waitService =
-        new WaitService(
-            loggerFactoryService,
-            true)
-        {
-            Driver = driver
-        };
+            ClickService clickService =
+                new ClickService(
+                    loggerFactoryService,
+                    true)
+                {
+                    ScreenService = screenService,
+                    Scaler = resolutionScaler
+                };
 
-    using var screenshotService =
-        new ScreenshotService(
-            loggerFactoryService,
-            true)
-        {
-            Driver = driver
-        };
+            WaitService waitService =
+                new WaitService(
+                    loggerFactoryService,
+                    true)
+                {
+                    Driver = driver
+                };
 
-    // ========================================================
-    // 7. Dependency injection composition root.
-    // ========================================================
+            using var screenshotService =
+                new ScreenshotService(
+                    loggerFactoryService,
+                    true)
+                {
+                    Driver = driver
+                };
 
-    var services =
-        new ServiceCollection();
+            // ========================================================
+            // 7. Dependency injection composition root.
+            // ========================================================
 
-    // --------------------------------------------------------
-    // 7.1. External runtime dependencies.
-    // --------------------------------------------------------
+            var services =
+                new ServiceCollection();
 
-    services.AddSingleton<
-        ILoggerFactoryBaseUtilityService>(
-        loggerFactoryService);
+            // --------------------------------------------------------
+            // 7.1. External runtime dependencies.
+            // --------------------------------------------------------
 
-    services.AddSingleton<IScreenshotService>(
-        screenshotService);
+            // Reuse the application's existing logger factory in the same DI container.
+            services.AddSingleton<ILoggerFactory>(globalLoggerFactory);
+            services.AddLogging();
 
-    services.AddSingleton<IClickService>(
-        clickService);
+            services.AddSingleton<
+                ILoggerFactoryBaseUtilityService>(
+                loggerFactoryService);
 
-    services.AddSingleton<IWaitService>(
-        waitService);
+            services.AddSingleton<IScreenshotService>(
+                screenshotService);
 
-    // --------------------------------------------------------
-    // 7.2. Production OCR infrastructure.
-    // --------------------------------------------------------
+            services.AddSingleton<IClickService>(
+                clickService);
 
-    services.AddOcrUtilityServices();
+            services.AddSingleton<IWaitService>(
+                waitService);
 
-    services.AddAndroidOcrServices();
+            // --------------------------------------------------------
+            // 7.2. Production OCR infrastructure.
+            // --------------------------------------------------------
 
-    // AddAndroidOcrServices already registers:
-    // IFileSystem
-    // IOcrDiagnosticImageWriter
-    // IAndroidScreenOcrService
-    // IOcrClickService
-    // IOcrPageVerificationService
-    // TimeProvider
-    // IGameWorkflowStepExecutor
+            services.AddOcrUtilityServices();
 
-    // --------------------------------------------------------
-    // 7.3. Production screen observation.
-    // --------------------------------------------------------
+            services.AddAndroidOcrServices();
 
-    services.AddAndroidScreenObservation();
+            // AddAndroidOcrServices already registers:
+            // IFileSystem
+            // IOcrDiagnosticImageWriter
+            // IAndroidScreenOcrService
+            // IOcrClickService
+            // IOcrPageVerificationService
+            // TimeProvider
+            // IGameWorkflowStepExecutor
 
-    // --------------------------------------------------------
-    // 7.4. Production grounding.
-    // --------------------------------------------------------
+            // --------------------------------------------------------
+            // 7.3. Production screen observation.
+            // --------------------------------------------------------
 
-    services.AddSingleton<
-        IOcrGroundedSnapshotFactory,
-        OcrGroundedSnapshotFactory>();
+            services.AddAndroidScreenObservation();
 
-    services.AddSingleton<
-        IOcrGroundedSnapshotFreshnessGuard,
-        OcrGroundedSnapshotFreshnessGuard>();
+            // --------------------------------------------------------
+            // 7.4. Production grounding.
+            // --------------------------------------------------------
 
-    services.AddSingleton<
-        IOcrGroundedClickService,
-        OcrGroundedClickService>();
+            services.AddSingleton<
+                IOcrGroundedSnapshotFactory,
+                OcrGroundedSnapshotFactory>();
 
-    // --------------------------------------------------------
-    // 7.5. Production planner.
-    // --------------------------------------------------------
+            services.AddSingleton<
+                IOcrGroundedSnapshotFreshnessGuard,
+                OcrGroundedSnapshotFreshnessGuard>();
 
-    services.AddSingleton<
-        IAiToolExecutionStateAccessor<
-            OcrGroundedPlannerExecutionState>,
-        AiToolExecutionStateAccessor<
-            OcrGroundedPlannerExecutionState>>();
+            services.AddSingleton<
+                IOcrGroundedClickService,
+                OcrGroundedClickService>();
 
-    services.AddSingleton<
-        IOcrGroundedPlannerActionExecutor,
-        OcrGroundedPlannerActionExecutor>();
+            // --------------------------------------------------------
+            // 7.5. Production planner.
+            // --------------------------------------------------------
 
-    services.AddSingleton<
-        IOcrGroundedPlannerExecutionScopeFactory,
-        OcrGroundedPlannerExecutionScopeFactory>();
+            services.AddSingleton<
+                IAiToolExecutionStateAccessor<
+                    OcrGroundedPlannerExecutionState>,
+                AiToolExecutionStateAccessor<
+                    OcrGroundedPlannerExecutionState>>();
 
-    // ========================================================
-    // 8. Gemini infrastructure.
-    // ========================================================
+            services.AddSingleton<
+                IOcrGroundedPlannerActionExecutor,
+                OcrGroundedPlannerActionExecutor>();
+
+            services.AddSingleton<
+                IOcrGroundedPlannerExecutionScopeFactory,
+                OcrGroundedPlannerExecutionScopeFactory>();
+
+            // Register the screen stability dependencies.
+            services.AddSingleton<IScreenFrameComparer, ScreenFrameComparer>();
+
+            services.AddSingleton<IAndroidScreenStabilityGuard,
+                AndroidScreenStabilityGuard>();
+
+            services.AddSingleton<
+                IScreenFrameDifferenceAnalyzer,
+                ScreenFrameDifferenceAnalyzer>();
+
+            services.AddSingleton<
+                IOcrTargetStabilityEvaluatorFactory,
+                OcrTargetStabilityEvaluatorFactory>();
+
+
+            services.AddSingleton<
+                IOcrObservationLineNormalizer,
+                OcrObservationLineNormalizer>();
+
+            // Register the validated stability policy.
+            services.AddSingleton(_ =>
+            {
+                var options = new ScreenStabilityOptions
+                {
+                    RequiredConsecutiveMatches = 2,
+                    SampleInterval = TimeSpan.FromMilliseconds(250),
+                    Timeout = TimeSpan.FromSeconds(30),
+                    MaximumDifferenceRatio = 0.01
+                };
+                options.Validate();
+                return options;
+            });
+
+            // Register a candidate ROI around the lower-left "任務" label.
+            // The normalized bounds are based on the supplied game screenshot.
+            // Validate actual OCR recognition and pixel differences before production use.
+
+            var taskRegion = new NormalizedScreenRegion(
+                X: 0.2222,
+                Y: 0.7731,
+                Width: 0.0556,
+                Height: 0.1157);
+
+            services.AddSingleton(_ =>
+            {
+                var options = new ScreenObservationStabilityOptions
+                {
+                    Region = taskRegion,
+                    TargetText = "任務",
+                    MaximumDifferenceRatio = 0.03,
+                    MaximumCenterMovement = 0.02,
+                    RequiredConsecutiveMatches = 2,
+                    SampleInterval = TimeSpan.FromMilliseconds(250),
+                    Timeout = TimeSpan.FromSeconds(45)
+                };
+
+                options.Validate();
+                return options;
+            });
+
+            // Explicitly select the ROI + OCR constructor.
+            // This registration overrides the earlier observation service registration.
+            services.AddSingleton<IAndroidScreenObservationService>(provider =>
+                new AndroidScreenObservationService(
+                    provider.GetRequiredService<IScreenshotService>(),
+                    provider.GetRequiredService<IAndroidScreenOcrService>(),
+                    provider.GetRequiredService<IAndroidScreenStabilityGuard>(),
+                    provider.GetRequiredService<ScreenStabilityOptions>(),
+                    provider.GetRequiredService<IScreenFrameDifferenceAnalyzer>(),
+                    provider.GetRequiredService<IOcrTargetStabilityEvaluatorFactory>(),
+                    provider.GetRequiredService<IOcrObservationLineNormalizer>(),
+                    provider.GetRequiredService<ScreenObservationStabilityOptions>()));
+
+            // ========================================================
+            // 8. Gemini infrastructure.
+            // ========================================================
 
 #if AUTO_EXECUTE_TASKS || GEMINI_READ_ONLY_SMOKE_TEST
 
-    var aiExecutionSettings =
-        new AiExecutionSettings
-        {
-            LastTokenCountNeededToBeKept = 5,
+            var aiExecutionSettings =
+                new AiExecutionSettings
+                {
+                    LastTokenCountNeededToBeKept = 5,
 
-            MaxSteps = 20,
+                    MaxSteps = 20,
 
-            Threshold =
-                AiUtility.AiBaseUtilityServices
-                    .Consts.Constants
-                    .ExecutionSettings.MAX_THRESHOLD,
+                    Threshold =
+                        AiUtility.AiBaseUtilityServices
+                            .Consts.Constants
+                            .ExecutionSettings.MAX_THRESHOLD,
 
-            ToolExecutionTimeout =
-                TimeSpan.FromMinutes(2),
+                    ToolExecutionTimeout =
+                        TimeSpan.FromMinutes(2),
 
-            ForceSequentialToolExecution = true
-        };
+                    ForceSequentialToolExecution = true
+                };
 
-    var globalSemaphoreSlimModel =
-        new SemaphoreSlimModel
-        {
-            InitialCount = 2,
-            MaxCount = 2
-        };
+            var globalSemaphoreSlimModel =
+                new SemaphoreSlimModel
+                {
+                    InitialCount = 2,
+                    MaxCount = 2
+                };
 
-    var watchdogModel =
-        new WatchdogModel
-        {
-            Timeout = TimeSpan.FromMinutes(2)
-        };
+            var watchdogModel =
+                new WatchdogModel
+                {
+                    Timeout = TimeSpan.FromMinutes(2)
+                };
 
-    var circuitBreakerModel =
-        new CircuitBreakerModel
-        {
-            ContinuousFailureCount = 0,
-            MaxAllowedFailureCount = 3,
-            CoolDown = TimeSpan.FromSeconds(30)
-        };
+            var circuitBreakerModel =
+                new CircuitBreakerModel
+                {
+                    ContinuousFailureCount = 0,
+                    MaxAllowedFailureCount = 3,
+                    CoolDown = TimeSpan.FromSeconds(30)
+                };
 
-    ISemaphoreSlimService semaphoreSlimService =
-        new SemaphoreSlimService(
-            loggerFactoryService: loggerFactoryService,
-            globalSemaphoreSlimModel: globalSemaphoreSlimModel,
-            maxRequestsPerWindow: 2,
-            maxLimitRate: TimeSpan.FromSeconds(30),
-            watchdogModel: watchdogModel,
-            circuitBreakerModel: circuitBreakerModel,
-            needToStartWatchDog: false);
+            ISemaphoreSlimService semaphoreSlimService =
+                new SemaphoreSlimService(
+                    loggerFactoryService: loggerFactoryService,
+                    globalSemaphoreSlimModel: globalSemaphoreSlimModel,
+                    maxRequestsPerWindow: 2,
+                    maxLimitRate: TimeSpan.FromSeconds(30),
+                    watchdogModel: watchdogModel,
+                    circuitBreakerModel: circuitBreakerModel,
+                    needToStartWatchDog: false);
 
-    ITypeUtilityService typeUtilityService =
-        new TypeUtilityService();
+            ITypeUtilityService typeUtilityService =
+                new TypeUtilityService();
 
-    IJsonUtilityService jsonUtilityService =
-        new JsonUtilityService(typeUtilityService);
+            IJsonUtilityService jsonUtilityService =
+                new JsonUtilityService(typeUtilityService);
 
-    IEnumUtilityService enumUtilityService =
-        new EnumUtilityService();
+            IEnumUtilityService enumUtilityService =
+                new EnumUtilityService();
 
-    IExpressionTreeUtilityService expressionTreeUtilityService =
-        new ExpressionTreeUtilityService();
+            IExpressionTreeUtilityService expressionTreeUtilityService =
+                new ExpressionTreeUtilityService();
 
-    IReflectionUtilityService reflectionUtilityService =
-        new ReflectionUtilityService(
-            expressionTreeUtilityService);
+            IReflectionUtilityService reflectionUtilityService =
+                new ReflectionUtilityService(
+                    expressionTreeUtilityService);
 
-    IGeminiToolRegistry geminiToolRegistry =
-        new GeminiToolRegistry(
-            reflectionUtilityService);
+            IGeminiToolRegistry geminiToolRegistry =
+                new GeminiToolRegistry(
+                    reflectionUtilityService);
 
-    IAiParameterSchemaGenerator parameterSchemaGenerator =
-        new GeminiSchemaGenerator(
-            jsonUtilityService,
-            typeUtilityService);
+            IAiParameterSchemaGenerator parameterSchemaGenerator =
+                new GeminiSchemaGenerator(
+                    jsonUtilityService,
+                    typeUtilityService);
 
-    IGeminiParameterPropertyMapper parameterPropertyMapper =
-        new GeminiParameterPropertyMapper();
+            IGeminiParameterPropertyMapper parameterPropertyMapper =
+                new GeminiParameterPropertyMapper();
 
-    var geminiToolConverter =
-        new GeminiToolConverter(
-            jsonUtilityService,
-            enumUtilityService,
-            parameterSchemaGenerator,
-            parameterPropertyMapper);
+            var geminiToolConverter =
+                new GeminiToolConverter(
+                    jsonUtilityService,
+                    enumUtilityService,
+                    parameterSchemaGenerator,
+                    parameterPropertyMapper);
 
-    IGeminiToolService geminiToolService =
-        new GeminiToolService(
-            geminiToolRegistry,
-            geminiToolConverter,
-            loggerFactoryService,
-            true);
+            IGeminiToolService geminiToolService =
+                new GeminiToolService(
+                    geminiToolRegistry,
+                    geminiToolConverter,
+                    loggerFactoryService,
+                    true);
 
-    IAiConfigService aiConfigService =
-        new AiConfigService
-        {
-            AiConfigPath = geminiSecureConfigPath
-        };
+            IAiConfigService aiConfigService =
+                new AiConfigService
+                {
+                    AiConfigPath = geminiSecureConfigPath
+                };
 
-    string geminiApiKey =
-        aiConfigService.GetApiKey();
+            string geminiApiKey =
+                aiConfigService.GetApiKey();
 
-    ArgumentException.ThrowIfNullOrWhiteSpace(
-        geminiApiKey);
+            ArgumentException.ThrowIfNullOrWhiteSpace(
+                geminiApiKey);
 
-    using var httpClient =
-        new HttpClient();
+            using var httpClient =
+                new HttpClient();
 
-    IGeminiApiClient geminiApiClient =
-        new GeminiApiClient(
-            loggerFactoryService,
-            true)
-        {
-            HttpClient = httpClient,
-            ApiKey = geminiApiKey,
-            ApiOptions = geminiApiOptions
-        };
+            IGeminiApiClient geminiApiClient =
+                new GeminiApiClient(
+                    loggerFactoryService,
+                    true)
+                {
+                    HttpClient = httpClient,
+                    ApiKey = geminiApiKey,
+                    ApiOptions = geminiApiOptions
+                };
 
-    IGeminiConversationManager geminiConversationManager =
-        new GeminiConversationManager(
-            loggerFactoryService,
-            geminiApiClient);
+            IGeminiConversationManager geminiConversationManager =
+                new GeminiConversationManager(
+                    loggerFactoryService,
+                    geminiApiClient);
 
-    IGeminiToolExecutor geminiToolExecutor =
-        new GeminiToolExecutor(
-            geminiToolRegistry,
-            typeUtilityService);
+            IGeminiToolExecutor geminiToolExecutor =
+                new GeminiToolExecutor(
+                    geminiToolRegistry,
+                    typeUtilityService);
 
-    IGeminiSessionManager geminiSessionManager =
-        new GeminiSessionManager(
-            loggerFactoryService,
-            geminiConversationManager,
-            geminiToolService,
-            geminiToolExecutor,
-            semaphoreSlimService);
+            IGeminiSessionManager geminiSessionManager =
+                new GeminiSessionManager(
+                    loggerFactoryService,
+                    geminiConversationManager,
+                    geminiToolService,
+                    geminiToolExecutor,
+                    semaphoreSlimService);
 
-    IProgress<WorkflowProgress> workflowProgress =
-        new Progress<WorkflowProgress>(
-            progress =>
-            {
-                logger.LogInformation(
-                    "Gemini workflow progress: {Progress}",
-                    progress);
-            });
+            IProgress<WorkflowProgress> workflowProgress =
+                new Progress<WorkflowProgress>(
+                    progress =>
+                    {
+                        logger.LogInformation(
+                            "Gemini workflow progress: {Progress}",
+                            progress);
+                    });
 
-    // Register real Appium tools only for automation mode.
-    // The read-only smoke test should not expose mutating tools.
+            // Register real Appium tools only for automation mode.
+            // The read-only smoke test should not expose mutating tools.
 
 #if AUTO_EXECUTE_TASKS
 
@@ -541,85 +635,120 @@ try
 
 #endif
 
-    services.AddGeminiAutomation(
-        aiExecutionSettings,
-        geminiToolRegistry,
-        geminiToolConverter,
-        geminiSessionManager,
-        workflowProgress);
+            services.AddGeminiAutomation(
+                aiExecutionSettings,
+                geminiToolRegistry,
+                geminiToolConverter,
+                geminiSessionManager,
+                workflowProgress);
 
 #endif
 
-    // ========================================================
-    // 9. Build the service provider exactly once.
-    // ========================================================
+            AddRegionOcrObservation(services);
 
-    using ServiceProvider serviceProvider =
-        services.BuildServiceProvider(
-            new ServiceProviderOptions
-            {
-                ValidateOnBuild = true,
-                ValidateScopes = true
-            });
+            // ========================================================
+            // Game-specific startup profile and coordination.
+            // ========================================================
 
-    // ========================================================
-    // 10. Resolve production services.
-    // ========================================================
+            services.AddSingleton<
+                IGameStartupProfile,
+                BeautyThreeKingdomsStartupProfile>();
 
-    IAndroidScreenObservationService observationService =
-        serviceProvider.GetRequiredService<
-            IAndroidScreenObservationService>();
+            services.AddTransient<
+                IGameStartupCoordinator,
+                GameStartupCoordinator>();
+    
+            // ========================================================
+            // 9. Build the service provider exactly once.
+            // ========================================================
 
-    IAndroidScreenOcrService androidScreenOcrService =
-        serviceProvider.GetRequiredService<
-            IAndroidScreenOcrService>();
+            using ServiceProvider serviceProvider =
+                services.BuildServiceProvider(
+                    new ServiceProviderOptions
+                    {
+                        ValidateOnBuild = true,
+                        ValidateScopes = true
+                    });
 
-    IOcrGroundedPlannerExecutionScopeFactory plannerScopeFactory =
-        serviceProvider.GetRequiredService<
-            IOcrGroundedPlannerExecutionScopeFactory>();
+            // ========================================================
+            // 10. Resolve production services.
+            // ========================================================
 
-    IGameWorkflowStepExecutor gameWorkflowStepExecutor =
-        serviceProvider.GetRequiredService<
-            IGameWorkflowStepExecutor>();
+            IAndroidScreenObservationService observationService =
+                serviceProvider.GetRequiredService<
+                    IAndroidScreenObservationService>();
 
-    logger.LogInformation(
-        "Production DI graph initialized successfully.");
+            IAndroidScreenOcrService androidScreenOcrService =
+                serviceProvider.GetRequiredService<
+                    IAndroidScreenOcrService>();
 
-    // ========================================================
-    // 11. Real-device OCR checkpoint.
-    // ========================================================
+            IOcrGroundedPlannerExecutionScopeFactory plannerScopeFactory =
+                serviceProvider.GetRequiredService<
+                    IOcrGroundedPlannerExecutionScopeFactory>();
 
-    OcrResult ocrResult =
-        await androidScreenOcrService
-            .RecognizeCurrentScreenAsync();
+            IGameWorkflowStepExecutor gameWorkflowStepExecutor =
+                serviceProvider.GetRequiredService<
+                    IGameWorkflowStepExecutor>();
+
+            IGameStartupCoordinator startupCoordinator =
+                serviceProvider.GetRequiredService<IGameStartupCoordinator>();
+                
+            logger.LogInformation(
+                "Production DI graph initialized successfully.");
+
+            logger.LogInformation(
+                "Starting game startup coordination.");
+
+            await startupCoordinator
+                .EnsureMainScreenReadyAsync();
+
+            logger.LogInformation(
+                "Game startup coordination completed; main screen is ready.");
+    
+            logger.LogInformation(
+                "Starting real-device ROI + OCR stability verification.");
+
+            IAndroidScreenObservation stableObservation =
+                await RunRegionOcrObservationAsync(serviceProvider);
+    
+            logger.LogInformation(
+                "Real-device ROI + OCR stability verification completed.");
+    
+            // ========================================================
+            // 11. Real-device OCR checkpoint.
+            // ========================================================
+
+            OcrResult ocrResult =
+                await androidScreenOcrService
+                    .RecognizeCurrentScreenAsync();
 
 #if IS_LOGGING
 
-    logger.LogInformation(
-        "OCR recognized text: {Text}",
-        ocrResult.Text);
+            logger.LogInformation(
+                "OCR recognized text: {Text}",
+                ocrResult.Text);
 
-    foreach (OcrTextLine line in ocrResult.Lines)
-    {
-        logger.LogInformation(
-            "OCR line: {Text}; " +
-            "TopLeft=({Left}, {Top}); " +
-            "BottomRight=({Right}, {Bottom}); " +
-            "Center=({CenterX}, {CenterY})",
-            line.Text,
-            line.Bounds.TopLeft.X,
-            line.Bounds.TopLeft.Y,
-            line.Bounds.BottomRight.X,
-            line.Bounds.BottomRight.Y,
-            line.Bounds.Center.X,
-            line.Bounds.Center.Y);
-    }
+            foreach (OcrTextLine line in ocrResult.Lines)
+            {
+                logger.LogInformation(
+                    "OCR line: {Text}; " +
+                    "TopLeft=({Left}, {Top}); " +
+                    "BottomRight=({Right}, {Bottom}); " +
+                    "Center=({CenterX}, {CenterY})",
+                    line.Text,
+                    line.Bounds.TopLeft.X,
+                    line.Bounds.TopLeft.Y,
+                    line.Bounds.BottomRight.X,
+                    line.Bounds.BottomRight.Y,
+                    line.Bounds.Center.X,
+                    line.Bounds.Center.Y);
+            }
 
 #endif
 
-    // ========================================================
-    // 12. Real-device OCR workflow.
-    // ========================================================
+            // ========================================================
+            // 12. Real-device OCR workflow.
+            // ========================================================
 
 #if !GEMINI_READ_ONLY_SMOKE_TEST
 
@@ -649,31 +778,31 @@ try
 
 #endif
 
-    // ========================================================
-    // 13. Gemini read-only smoke test.
-    // ========================================================
+            // ========================================================
+            // 13. Gemini read-only smoke test.
+            // ========================================================
 
 #if GEMINI_READ_ONLY_SMOKE_TEST
 
-    IGeminiJobHandler smokeTestHandler =
-        serviceProvider.GetRequiredService<
-            IGeminiJobHandler>();
+            IGeminiJobHandler smokeTestHandler =
+                serviceProvider.GetRequiredService<
+                    IGeminiJobHandler>();
 
-    var smokeTestJob =
-        new GeminiJob
-        {
-            JobName =
-                "GeminiReadOnlyScreenObservationSmokeTest",
+            var smokeTestJob =
+                new GeminiJob
+                {
+                    JobName =
+                        "GeminiReadOnlyScreenObservationSmokeTest",
 
-            UserTask =
-                """
+                    UserTask =
+                        """
                 Observe and describe the current Android screen.
                 Do not click, tap, swipe, type, navigate,
                 or invoke any tool.
                 """,
 
-            Prompt =
-                """
+                    Prompt =
+                        """
                 This is a read-only integration smoke test.
 
                 Inspect the supplied Android screen image
@@ -685,22 +814,22 @@ try
                 Return only a short description of the
                 visible screen.
                 """
-        };
+                };
 
-    logger.LogInformation(
-        "Starting Gemini read-only smoke test.");
+            logger.LogInformation(
+                "Starting Gemini read-only smoke test.");
 
-    await smokeTestHandler.AutoExecuteAsync(
-        smokeTestJob);
+            await smokeTestHandler.AutoExecuteAsync(
+                smokeTestJob);
 
-    logger.LogInformation(
-        "Gemini read-only smoke test completed.");
+            logger.LogInformation(
+                "Gemini read-only smoke test completed.");
 
 #endif
 
-    // ========================================================
-    // 14. Configured automation jobs.
-    // ========================================================
+            // ========================================================
+            // 14. Configured automation jobs.
+            // ========================================================
 
 #if AUTO_EXECUTE_TASKS
 
@@ -733,30 +862,94 @@ try
         "Configured automation sequence completed.");
 
 #endif
-}
-catch (Exception ex)
-{
-    logger.LogCritical(
-        ex,
-        "OmniAppium automation sequence terminated unexpectedly.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(
+                ex,
+                "OmniAppium automation sequence terminated unexpectedly.");
 
-    throw;
-}
-finally
-{
-    try
-    {
-        driverControlService.Dispose();
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                driverControlService.Dispose();
 
-        logger.LogInformation(
-            "Android driver was disposed.");
-    }
-    catch (Exception disposeException)
-    {
-        logger.LogError(
-            disposeException,
-            "Failed to dispose the Android driver.");
-    }
-}
+                logger.LogInformation(
+                    "Android driver was disposed.");
+            }
+            catch (Exception disposeException)
+            {
+                logger.LogError(
+                    disposeException,
+                    "Failed to dispose the Android driver.");
+            }
+        }
 
 #endif
+    }
+    /// <summary>
+    /// Runs a region-based OCR observation using the already initialized service provider.
+    /// </summary>
+    /// <param name="services">The existing application service provider with an active Appium driver.</param>
+    /// <param name="cancellationToken">The token used to cancel the observation.</param>
+    /// <returns>The stable observation containing the matching screenshot and OCR result.</returns>
+    public static async Task<IAndroidScreenObservation> RunRegionOcrObservationAsync(
+        IServiceProvider services,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        ScreenObservationStabilityOptions options =
+            services.GetRequiredService<ScreenObservationStabilityOptions>();
+
+        options.Validate();
+
+        IScreenRegionOcrObservationFactory factory =
+            services.GetRequiredService<IScreenRegionOcrObservationFactory>();
+
+        ILogger<ScreenRegionOcrObservation> logger =
+            services.GetRequiredService<ILogger<ScreenRegionOcrObservation>>();
+
+        IAndroidScreenObservationService observation =
+            new ScreenRegionOcrObservation(factory, options, logger);
+
+        // The wrapper preserves cancellation and propagates timeouts and failures.
+        return await observation.ObserveAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Registers region-based OCR observation dependencies in the existing service collection.
+    /// </summary>
+    /// <param name="services">The service collection configured by the existing application host.</param>
+    /// <returns>The same service collection for further registration.</returns>
+    public static IServiceCollection AddRegionOcrObservation(
+        IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddTransient<
+            IScreenFrameDifferenceAnalyzer,
+            ScreenFrameDifferenceAnalyzer>();
+
+        services.AddTransient<
+            IOcrTargetStabilityEvaluatorFactory,
+            OcrTargetStabilityEvaluatorFactory>();
+
+        services.AddTransient<
+            IOcrObservationLineNormalizer,
+            OcrObservationLineNormalizer>();
+
+        services.AddTransient<
+            IScreenRegionOcrObservationFactory,
+            ScreenRegionOcrObservationFactory>();
+
+        // IScreenshotService, IAndroidScreenOcrService and
+        // IAndroidScreenStabilityGuard must already be registered by the host.
+        return services;
+    }
+}
