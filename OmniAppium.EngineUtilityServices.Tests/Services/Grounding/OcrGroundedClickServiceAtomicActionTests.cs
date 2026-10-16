@@ -358,20 +358,14 @@ public sealed class OcrGroundedClickServiceAtomicActionTests
         IClickService clickService,
         IOcrGroundedSnapshotFreshnessGuard freshnessGuard)
     {
-        Mock<IGroundedClickEvidenceProvider> evidenceProvider = new(MockBehavior.Strict);
+        Mock<IAtomicGroundedClickEvidenceProvider> evidenceProvider = new(MockBehavior.Strict);
         Mock<IGroundedClickAuthorizationService> authorizationService = new(MockBehavior.Strict);
 
         evidenceProvider
-            .Setup(provider => provider.Resolve(
+            .Setup(provider => provider.Consume(
                 It.IsAny<OcrGroundedSnapshot>(),
                 It.IsAny<OcrGroundedTarget>()))
-            .Returns((ReviewedGroundTruth)null!);
-
-        evidenceProvider
-            .Setup(provider => provider.ResolveConfidence(
-                It.IsAny<OcrGroundedSnapshot>(),
-                It.IsAny<OcrGroundedTarget>()))
-            .Returns(0.99f);
+            .Returns(new ConsumedGroundedClickEvidence(null!, 0.99f));
 
         authorizationService
             .Setup(service => service.Authorize(

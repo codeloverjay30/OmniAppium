@@ -16,15 +16,13 @@ internal static class GroundedClickTestDoubles
     /// </summary>
     internal static IGroundedClickEvidenceProvider Evidence()
     {
-        var mock = new Mock<IGroundedClickEvidenceProvider>(MockBehavior.Strict);
-        mock.Setup(x => x.Resolve(It.IsAny<OcrResult>(), It.IsAny<string>()))
-            .Returns((ReviewedGroundTruth)null!);
-        mock.Setup(x => x.ResolveConfidence(It.IsAny<OcrResult>(), It.IsAny<OcrTextMatch>()))
-            .Returns(1.0f);
-        mock.Setup(x => x.Resolve(It.IsAny<OcrGroundedSnapshot>(), It.IsAny<OcrGroundedTarget>()))
-            .Returns((ReviewedGroundTruth)null!);
-        mock.Setup(x => x.ResolveConfidence(It.IsAny<OcrGroundedSnapshot>(), It.IsAny<OcrGroundedTarget>()))
-            .Returns(1.0f);
+        var mock = new Mock<IAtomicGroundedClickEvidenceProvider>(MockBehavior.Strict);
+        mock.Setup(x => x.Consume(
+                It.IsAny<OcrResult>(), It.IsAny<string>(), It.IsAny<OcrTextMatch>()))
+            .Returns(new ConsumedGroundedClickEvidence(null!, 1.0f));
+        mock.Setup(x => x.Consume(
+                It.IsAny<OcrGroundedSnapshot>(), It.IsAny<OcrGroundedTarget>()))
+            .Returns(new ConsumedGroundedClickEvidence(null!, 1.0f));
         return mock.Object;
     }
 
