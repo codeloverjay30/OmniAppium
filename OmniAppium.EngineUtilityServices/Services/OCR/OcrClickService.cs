@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 using OCRUtilityServices.Models;
@@ -97,6 +98,8 @@ public sealed class OcrClickService(
             timeoutSource.Token);
 
         string lastFailure = "The OCR target has not been observed.";
+        var stopwatch = Stopwatch.StartNew();
+        int attempt = 0;
 
         try
         {
@@ -104,6 +107,7 @@ public sealed class OcrClickService(
             {
                 linkedSource.Token.ThrowIfCancellationRequested();
 
+                attempt++;
                 OcrResult result = await screenOcrService
                     .RecognizeCurrentScreenAsync(linkedSource.Token)
                     .ConfigureAwait(false);
@@ -116,6 +120,8 @@ public sealed class OcrClickService(
                         OcrTextMatchMode.NormalizedContains);
 
                     ValidateMatchBounds(match, targetText);
+                    LogAttempt(attempt, stopwatch.ElapsedMilliseconds, result,
+                        targetText, "MATCHED", null);
                     return match;
                 }
                 catch (InvalidOperationException ex)
@@ -123,9 +129,8 @@ public sealed class OcrClickService(
                           $"OCR target '{targetText}' was not found.")
                 {
                     lastFailure = ex.Message;
-                    _logger.LogDebug(
-                        "OCR target {TargetText} is not visible yet.",
-                        targetText);
+                    LogAttempt(attempt, stopwatch.ElapsedMilliseconds, result,
+                        targetText, "NOT_FOUND", lastFailure);
                 }
                 catch (InvalidOperationException ex)
                     when (IsWordGeometryFailure(ex, targetText))
@@ -145,10 +150,8 @@ public sealed class OcrClickService(
                         var fallback = new OcrTextMatch(targetText.Trim(), line.Bounds);
                         ValidateMatchBounds(fallback, targetText);
 
-                        _logger.LogWarning(
-                            "OCR target {TargetText}: using exact-line bounds " +
-                            "because word-level geometry is unavailable.",
-                            targetText);
+                        LogAttempt(attempt, stopwatch.ElapsedMilliseconds, result,
+                            targetText, "EXACT_LINE_FALLBACK", ex.Message);
 
                         return fallback;
                     }
@@ -158,7 +161,15 @@ public sealed class OcrClickService(
                         "word-level geometry was unavailable and the full line " +
                         "did not exactly match the target.";
 
-                    _logger.LogWarning("{Reason}", lastFailure);
+                    LogAttempt(attempt, stopwatch.ElapsedMilliseconds, result,
+                        targetText, "SUBSTRING_GEOMETRY_REJECTED", lastFailure);
+                }
+
+                catch (InvalidOperationException ex)
+                {
+                    LogAttempt(attempt, stopwatch.ElapsedMilliseconds, result,
+                        targetText, "MATCH_REJECTED", ex.Message);
+                    throw;
                 }
 
                 await Task.Delay(RetryInterval, linkedSource.Token)
@@ -169,11 +180,75 @@ public sealed class OcrClickService(
             when (!cancellationToken.IsCancellationRequested &&
                   timeoutSource.IsCancellationRequested)
         {
+            _logger.LogWarning(
+                "OCR click timed out. TargetText={TargetText}; Attempts={Attempt}; " +
+                "ElapsedMs={ElapsedMs}; MatcherOutcome=TIMEOUT; LastFailure={LastFailure}",
+                targetText, attempt, stopwatch.ElapsedMilliseconds, lastFailure);
             throw new TimeoutException(
                 $"OCR target '{targetText}' could not be safely located " +
                 $"within {timeout}. Last observation: {lastFailure}",
                 ex);
         }
+    }
+
+    /// <summary>
+    /// Emits a bounded structured diagnostic for one OCR matching attempt.
+    /// </summary>
+    /// <param name="attempt">The one-based attempt number.</param>
+    /// <param name="elapsedMs">Elapsed milliseconds since the first attempt.</param>
+    /// <param name="result">The recognized OCR result.</param>
+    /// <param name="targetText">The requested target.</param>
+    /// <param name="outcome">The matcher outcome.</param>
+    /// <param name="reason">The last observed failure, if any.</param>
+    private void LogAttempt(
+        int attempt,
+        long elapsedMs,
+        OcrResult result,
+        string targetText,
+        string outcome,
+        string? reason)
+    {
+        // Limit text emitted into logs to prevent unbounded OCR payloads.
+        const int maxLoggedCharacters = 256;
+        string normalized = NormalizeForDiagnostics(result.Text);
+        if (normalized.Length > maxLoggedCharacters)
+        {
+            normalized = normalized[..maxLoggedCharacters];
+        }
+
+        _logger.LogInformation(
+            "OCR click attempt. TargetText={TargetText}; Attempt={Attempt}; " +
+            "ElapsedMs={ElapsedMs}; LineCount={LineCount}; " +
+            "NormalizedText={NormalizedText}; MatcherOutcome={MatcherOutcome}; " +
+            "Reason={Reason}",
+            targetText, attempt, elapsedMs, result.Lines.Count,
+            normalized, outcome, reason);
+    }
+
+    /// <summary>
+    /// Normalizes OCR diagnostic text without allocating intermediate arrays.
+    /// </summary>
+    /// <param name="text">The recognized OCR text.</param>
+    /// <returns>OCR text with whitespace removed.</returns>
+    private static string NormalizeForDiagnostics(string text)
+    {
+        ReadOnlySpan<char> input = text.AsSpan();
+        Span<char> buffer = stackalloc char[256];
+        int written = 0;
+        foreach (char character in input)
+        {
+            if (!char.IsWhiteSpace(character))
+            {
+                if (written == buffer.Length)
+                {
+                    break;
+                }
+
+                buffer[written++] = character;
+            }
+        }
+
+        return new string(buffer[..written]);
     }
 
     /// <summary>
