@@ -92,12 +92,16 @@ public sealed class OcrGroundedClickService
         using IOcrGroundedActionLease lease =
             _freshnessGuard.AcquireCurrent(snapshot);
 
-        ReviewedGroundTruth evidence = _evidenceProvider.Resolve(snapshot, target);
+        if (_evidenceProvider is not IAtomicGroundedClickEvidenceProvider atomicProvider)
+            throw new InvalidOperationException(
+                "Atomic reviewed click evidence provider is required.");
+
+        ConsumedGroundedClickEvidence authorization = atomicProvider.Consume(snapshot, target);
         (double x, double y) = _authorizationService.Authorize(
             target.Text,
-            _evidenceProvider.ResolveConfidence(snapshot, target),
+            authorization.Confidence,
             bounds,
-            evidence);
+            authorization.Evidence);
 
         _clickService.ClickAbsolute(x, y);
     }

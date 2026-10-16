@@ -53,11 +53,16 @@ public sealed class OcrClickService(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReviewedGroundTruth evidence = evidenceProvider.Resolve(observation, targetText);
+        if (evidenceProvider is not IAtomicGroundedClickEvidenceProvider atomicProvider)
+            throw new InvalidOperationException(
+                "Atomic reviewed click evidence provider is required.");
+
+        ConsumedGroundedClickEvidence authorization =
+            atomicProvider.Consume(observation, targetText, targetMatch);
         (double x, double y) = authorizationService.Authorize(
             targetMatch.Text,
-            evidenceProvider.ResolveConfidence(observation, targetMatch),
-            targetMatch.Bounds, evidence);
+            authorization.Confidence,
+            targetMatch.Bounds, authorization.Evidence);
 
         ValidateCoordinates(x, y, targetText);
 
