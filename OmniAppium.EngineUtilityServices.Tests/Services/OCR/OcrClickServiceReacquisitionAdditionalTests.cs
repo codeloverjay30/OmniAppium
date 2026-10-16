@@ -1,3 +1,5 @@
+using OmniAppium.EngineUtilityServices.Tests;
+using OmniAppium.EngineUtilityServices.Services.Grounding;
 using CoordinateUtilityServices;
 using FluentAssertions;
 using LoggerFactoryUtilityServices;
@@ -119,7 +121,9 @@ public sealed class OcrClickServiceReacquisitionAdditionalTests
             screen.Object,
             new OcrTextMatcher(),
             click.Object,
-            loggerFactory.Object);
+            loggerFactory.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
     }
 
     private static OcrResult CreateResult(

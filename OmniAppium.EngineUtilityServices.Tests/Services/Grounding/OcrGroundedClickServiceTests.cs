@@ -1,3 +1,5 @@
+using OmniAppium.EngineUtilityServices.Tests;
+using OCRUtilityServices.Services;
 using CoordinateUtilityServices;
 using FluentAssertions;
 using Moq;
@@ -17,7 +19,9 @@ public sealed class OcrGroundedClickServiceTests
         Action act = () =>
             _ = new OcrGroundedClickService(
                 null!,
-                freshnessGuard.Object);
+                freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         act.Should()
             .Throw<ArgumentNullException>()
@@ -33,7 +37,9 @@ public sealed class OcrGroundedClickServiceTests
         Action act = () =>
             _ = new OcrGroundedClickService(
                 clickService.Object,
-                null!);
+                null!,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         act.Should()
             .Throw<ArgumentNullException>()
@@ -50,9 +56,11 @@ public sealed class OcrGroundedClickServiceTests
             new(MockBehavior.Strict);
 
         OcrGroundedClickService sut =
-            new(
+            new OcrGroundedClickService(
                 clickService.Object,
-                freshnessGuard.Object);
+                freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         Action act = () =>
             sut.Click(
@@ -98,9 +106,11 @@ public sealed class OcrGroundedClickServiceTests
             new(MockBehavior.Strict);
 
         OcrGroundedClickService sut =
-            new(
+            new OcrGroundedClickService(
                 clickService.Object,
-                freshnessGuard.Object);
+                freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         Action act = () =>
             sut.Click(
@@ -137,9 +147,11 @@ public void Click_WhenTargetsCollectionIsNull_ShouldThrowArgumentException()
             null!);
 
     OcrGroundedClickService sut =
-        new(
+        new OcrGroundedClickService(
             clickService.Object,
-            freshnessGuard.Object);
+            freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
     // Act
     Action act = () =>
@@ -190,9 +202,11 @@ public void Click_WhenTargetDoesNotExist_ShouldThrowInvalidOperationException()
             ]);
 
     OcrGroundedClickService sut =
-        new(
+        new OcrGroundedClickService(
             clickService.Object,
-            freshnessGuard.Object);
+            freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
     // Act
     Action act = () =>
@@ -243,9 +257,11 @@ public void Click_WhenTargetIdDiffersOnlyByCase_ShouldThrowInvalidOperationExcep
             ]);
 
     OcrGroundedClickService sut =
-        new(
+        new OcrGroundedClickService(
             clickService.Object,
-            freshnessGuard.Object);
+            freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
     // Act
     Action act = () =>
@@ -304,9 +320,11 @@ public void Click_WhenTargetIdIsAmbiguous_ShouldThrowInvalidOperationException()
             ]);
 
     OcrGroundedClickService sut =
-        new(
+        new OcrGroundedClickService(
             clickService.Object,
-            freshnessGuard.Object);
+            freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
     // Act
     Action act = () =>
@@ -357,9 +375,11 @@ public void Click_WhenTargetWidthIsZero_ShouldThrowInvalidOperationException()
             ]);
 
     OcrGroundedClickService sut =
-        new(
+        new OcrGroundedClickService(
             clickService.Object,
-            freshnessGuard.Object);
+            freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
     // Act
     Action act = () =>
@@ -410,9 +430,11 @@ public void Click_WhenTargetWidthIsZero_ShouldThrowInvalidOperationException()
                 ]);
 
         OcrGroundedClickService sut =
-            new(
+            new OcrGroundedClickService(
                 clickService.Object,
-                freshnessGuard.Object);
+                freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         // Act
         Action act = () =>
@@ -484,9 +506,11 @@ public void Click_WhenTargetWidthIsZero_ShouldThrowInvalidOperationException()
                     currentLease.Dispose());
 
         OcrGroundedClickService sut =
-            new(
+            new OcrGroundedClickService(
                 clickService.Object,
-                freshnessGuard.Object);
+                freshnessGuard.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         // Act
         Action act = () =>

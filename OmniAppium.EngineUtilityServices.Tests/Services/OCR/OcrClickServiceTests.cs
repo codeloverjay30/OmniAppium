@@ -1,3 +1,5 @@
+using OmniAppium.EngineUtilityServices.Tests;
+using OmniAppium.EngineUtilityServices.Services.Grounding;
 using CoordinateUtilityServices;
 using FluentAssertions;
 using LoggerFactoryUtilityServices;
@@ -46,7 +48,9 @@ public sealed class OcrClickServiceTests
             _screenOcrServiceMock.Object,
             _ocrTextMatcherMock.Object,
             _clickServiceMock.Object,
-            _loggerFactoryServiceMock.Object);
+            _loggerFactoryServiceMock.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
     }
 
     [Fact]
@@ -113,7 +117,9 @@ public sealed class OcrClickServiceTests
             screenOcrService.Object,
             ocrTextMatcher.Object,
             clickService.Object,
-            _loggerFactoryServiceMock.Object);
+            _loggerFactoryServiceMock.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         // Act
         Action act = () =>
@@ -294,7 +300,9 @@ public sealed class OcrClickServiceTests
             screenOcrService.Object,
             ocrTextMatcher.Object,
             clickService.Object,
-            _loggerFactoryServiceMock.Object);
+            _loggerFactoryServiceMock.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         // Act
         Action act = () =>
@@ -413,7 +421,9 @@ public sealed class OcrClickServiceTests
             screenOcrService.Object,
             ocrTextMatcher.Object,
             clickService.Object,
-            _loggerFactoryServiceMock.Object);
+            _loggerFactoryServiceMock.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         // Act
         Action act = () =>
@@ -524,7 +534,9 @@ public sealed class OcrClickServiceTests
             screenOcrService.Object,
             ocrTextMatcher.Object,
             clickService.Object,
-            _loggerFactoryServiceMock.Object);
+            _loggerFactoryServiceMock.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         // Act
         Action act = () =>
@@ -647,7 +659,9 @@ public sealed class OcrClickServiceTests
             screenOcrService.Object,
             ocrTextMatcher.Object,
             clickService.Object,
-            _loggerFactoryServiceMock.Object);
+            _loggerFactoryServiceMock.Object,
+                GroundedClickTestDoubles.Authorization(),
+                GroundedClickTestDoubles.Evidence());
 
         // Act
         Action act = () =>

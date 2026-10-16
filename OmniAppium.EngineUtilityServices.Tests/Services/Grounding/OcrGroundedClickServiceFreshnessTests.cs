@@ -1,3 +1,5 @@
+using OCRUtilityServices.Models;
+using OCRUtilityServices.Services;
 using CoordinateUtilityServices;
 using FluentAssertions;
 using Moq;
@@ -45,9 +47,7 @@ public sealed class OcrGroundedClickServiceFreshnessTests
             .Setup(currentLease => currentLease.Dispose());
 
         OcrGroundedClickService sut =
-            new(
-                clickService.Object,
-                freshnessGuard.Object);
+            CreateAuthorizedService(clickService.Object, freshnessGuard.Object);
 
         Action act = () =>
             sut.Click(snapshot, "ocr-0");
@@ -99,9 +99,7 @@ public sealed class OcrGroundedClickServiceFreshnessTests
                     "snapshot-42"));
 
         OcrGroundedClickService sut =
-            new(
-                clickService.Object,
-                freshnessGuard.Object);
+            CreateAuthorizedService(clickService.Object, freshnessGuard.Object);
 
         Action act = () =>
             sut.Click(snapshot, "ocr-0");
@@ -120,6 +118,41 @@ public sealed class OcrGroundedClickServiceFreshnessTests
                 It.IsAny<double>(),
                 It.IsAny<double>()),
             Times.Never);
+    }
+
+    private static OcrGroundedClickService CreateAuthorizedService(
+        IClickService clickService,
+        IOcrGroundedSnapshotFreshnessGuard freshnessGuard)
+    {
+        Mock<IGroundedClickEvidenceProvider> evidenceProvider = new(MockBehavior.Strict);
+        Mock<IGroundedClickAuthorizationService> authorizationService = new(MockBehavior.Strict);
+
+        evidenceProvider
+            .Setup(provider => provider.Resolve(
+                It.IsAny<OcrGroundedSnapshot>(),
+                It.IsAny<OcrGroundedTarget>()))
+            .Returns((ReviewedGroundTruth)null!);
+
+        evidenceProvider
+            .Setup(provider => provider.ResolveConfidence(
+                It.IsAny<OcrGroundedSnapshot>(),
+                It.IsAny<OcrGroundedTarget>()))
+            .Returns(0.99f);
+
+        authorizationService
+            .Setup(service => service.Authorize(
+                It.IsAny<string>(),
+                It.IsAny<float>(),
+                It.IsAny<CoordinateUtilityServices.Rectangle>(),
+                It.IsAny<ReviewedGroundTruth>()))
+            .Returns((string _, float _, CoordinateUtilityServices.Rectangle bounds, ReviewedGroundTruth _) =>
+                (bounds.Center.X, bounds.Center.Y));
+
+        return new OcrGroundedClickService(
+            clickService,
+            freshnessGuard,
+            authorizationService.Object,
+            evidenceProvider.Object);
     }
 
     private static OcrGroundedSnapshot CreateSnapshot(
