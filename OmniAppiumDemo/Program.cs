@@ -1,7 +1,17 @@
 #define DEVELOPING
 #define IS_LOGGING
-#define GEMINI_READ_ONLY_SMOKE_TEST
+// #define GEMINI_READ_ONLY_SMOKE_TEST
+#define ISSUE48_CLICK_SMOKE_TEST
 // #define AUTO_EXECUTE_TASKS
+
+#if ISSUE48_CLICK_SMOKE_TEST && GEMINI_READ_ONLY_SMOKE_TEST
+#error Issue48 and Gemini read-only smoke test modes are mutually exclusive.
+#endif
+
+#if ISSUE48_CLICK_SMOKE_TEST && AUTO_EXECUTE_TASKS
+#error Issue48 smoke test and automatic task execution are mutually exclusive.
+#endif
+
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -55,6 +65,8 @@ using TypeUtilityServices;
 using OmniAppium.EngineUtilityServices.Interfaces;
 using OmniAppiumDemo.Games.BeautyThreeKingdoms.Startup;
 using OmniAppium.EngineUtilityServices.Startup;
+using OCRUtilityServices.Services;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 
 namespace OmniAppiumDemo;
@@ -64,6 +76,9 @@ namespace OmniAppiumDemo;
 /// </summary>
 public static class Program
 {
+    /// <summary>
+    /// Initializes the Appium demo and runs the selected smoke test or automation mode.
+    /// </summary>
     public static async Task Main(string[] args)
     {
 
@@ -378,10 +393,14 @@ logger.LogInformation(
                 IOcrGroundedSnapshotFreshnessGuard,
                 OcrGroundedSnapshotFreshnessGuard>();
 
+            // services.AddSingleton<
+            //     IOcrGroundedClickService,
+            //     OcrGroundedClickService>();
+
             services.AddSingleton<
                 IOcrGroundedClickService,
-                OcrGroundedClickService>();
-
+                RejectingProductionGroundedClickService>();
+    
             // --------------------------------------------------------
             // 7.5. Production planner.
             // --------------------------------------------------------
@@ -657,7 +676,10 @@ logger.LogInformation(
             services.AddTransient<
                 IGameStartupCoordinator,
                 GameStartupCoordinator>();
-    
+            
+            // Apply the production click security policy last.
+            services.AddProductionClickSecurity();
+        
             // ========================================================
             // 9. Build the service provider exactly once.
             // ========================================================
@@ -696,6 +718,153 @@ logger.LogInformation(
             logger.LogInformation(
                 "Production DI graph initialized successfully.");
 
+#if ISSUE48_CLICK_SMOKE_TEST
+            logger.LogInformation(
+                "Issue48 Phase 1: startup coordination, Gemini, and automatic tasks are disabled.");
+
+            var issue48Runner = new OmniAppiumDemo.SmokeTests.Issue48ClickSmokeTestRunner(
+                serviceProvider.GetRequiredService<IAndroidScreenOcrService>(),
+                serviceProvider.GetRequiredService<IOcrGroundedSnapshotFactory>(),
+                serviceProvider.GetRequiredService<IGroundedClickAuthorizationService>());
+
+            OcrGroundedSnapshot issue48Snapshot =
+                await issue48Runner.VerifyReadOnlyAsync().ConfigureAwait(false);
+
+            logger.LogInformation(
+                "Issue48 Phase 1 PASS: SnapshotId={SnapshotId}; TargetCount={TargetCount}; " +
+                "missing reviewed evidence rejected; intercepted ClickAttempts=0.",
+                issue48Snapshot.SnapshotId,
+                issue48Snapshot.Targets.Count);
+
+            // Phase 2 always enters target review; no automatic click is permitted.
+            logger.LogInformation(
+                "Issue48 Phase 2: acquiring a fresh OCR snapshot for the task target.");
+
+            OcrResult phase2Observation = await serviceProvider
+                .GetRequiredService<IAndroidScreenOcrService>()
+                .RecognizeCurrentScreenAsync()
+                .ConfigureAwait(false);
+
+            OcrGroundedSnapshot phase2Snapshot = serviceProvider
+                .GetRequiredService<IOcrGroundedSnapshotFactory>()
+                .Create(Guid.NewGuid().ToString("N"), phase2Observation);
+
+            // Record the actual OCR output before selecting a target.
+            foreach (OcrGroundedTarget candidate in phase2Snapshot.Targets)
+            {
+                logger.LogInformation(
+                    "Issue48 Phase 2 OCR candidate: TargetId={TargetId}; Text={Text}; Bounds={Bounds}.",
+                    candidate.Id,
+                    candidate.Text,
+                    candidate.Bounds);
+            }
+
+            // Match the exact target label after removing OCR whitespace.
+            OcrGroundedTarget[] taskTargets = phase2Snapshot.Targets
+                .Where(target =>
+                    target.Text is not null &&
+                    string.Equals(
+                        string.Concat(
+                            target.Text.Where(c => !char.IsWhiteSpace(c))),
+                        "任務",
+                        StringComparison.Ordinal) &&
+                    target.Bounds.Width > 0 &&
+                    target.Bounds.Height > 0)
+                .ToArray();
+    
+
+            if (taskTargets.Length != 1)
+            {
+                logger.LogWarning(
+                    "Issue48 Phase 2 INCONCLUSIVE: expected exactly one '任務' " +
+                    "target, found {Count}. No click was issued.",
+                    taskTargets.Length);
+            }
+            else
+            {
+                OcrGroundedTarget taskTarget = taskTargets[0];
+
+                logger.LogInformation(
+                    "Issue48 Phase 2 REVIEW: SnapshotId={SnapshotId}; " +
+                    "TargetId={TargetId}; Text={Text}; Bounds={Bounds}.",
+                    phase2Snapshot.SnapshotId,
+                    taskTarget.Id,
+                    taskTarget.Text,
+                    taskTarget.Bounds);
+
+                if (Console.IsInputRedirected)
+                {
+                    logger.LogWarning(
+                        "Issue48 Phase 2 BLOCKED: interactive operator review is unavailable. " +
+                        "No click was issued.");
+                }
+                else
+                {
+                    logger.LogInformation("Issue48 Phase 2 - Task Target Review");
+                    logger.LogInformation("SnapshotId: {SnapshotId}", phase2Snapshot.SnapshotId);
+                    logger.LogInformation("TargetId: {TargetId}", taskTarget.Id);
+                    logger.LogInformation("Text: {Text}", taskTarget.Text);
+                    logger.LogInformation("Bounds: {Bounds}", taskTarget.Bounds);
+                    logger.LogInformation(
+                        "Check the current device screen. Type REVIEW to confirm this target.");
+                    Console.WriteLine("Confirmation: ");
+
+                    string? confirmation = Console.ReadLine();
+                    if (!string.Equals(confirmation, "REVIEW", StringComparison.Ordinal))
+                    {
+                        logger.LogWarning(
+                            "Issue48 Phase 2 CANCELLED: operator did not confirm the target. " +
+                            "No click was issued.");
+                    }
+                    else
+                    {
+                        // The trusted reviewer must be independently registered in DI.
+                        // It must validate the exact screenshot, target identity, and bounds.
+                        // Operator confirmation alone must never manufacture evidence.
+                        var reviewedEvidenceSource = serviceProvider.GetService<
+                            Func<OcrGroundedSnapshot, OcrGroundedTarget,
+                                (ReviewedGroundTruth Evidence, float Confidence)?>>();
+
+                        if (reviewedEvidenceSource is null)
+                        {
+                            logger.LogWarning(
+                                "Issue48 Phase 2 BLOCKED: no independent ReviewedGroundTruth " +
+                                "source is registered. No click was issued.");
+                        }
+                        else
+                        {
+                            var reviewed = reviewedEvidenceSource(
+                                phase2Snapshot, taskTarget);
+
+                            if (reviewed is null)
+                            {
+                                logger.LogWarning(
+                                    "Issue48 Phase 2 BLOCKED: independent review rejected " +
+                                    "the target or did not provide evidence. No click was issued.");
+                            }
+                            else
+                            {
+                                // The runner registers one-use evidence, forwards exactly
+                                // one authorized real click, then rejects evidence replay.
+                                issue48Runner.VerifyApprovedSingleClick(
+                                    phase2Snapshot,
+                                    taskTarget.Id,
+                                    reviewed.Value.Evidence,
+                                    reviewed.Value.Confidence,
+                                    clickService,
+                                    operatorConfirmedDeviceClick: true);
+
+                                logger.LogInformation(
+                                    "Issue48 Phase 2 PASS: one real click was attempted " +
+                                    "for TargetId={TargetId}; evidence replay was rejected.",
+                                    taskTarget.Id);
+                            }
+                        }
+                    }
+                }
+            }
+
+#else
             logger.LogInformation(
                 "Starting game startup coordination.");
 
@@ -861,6 +1030,7 @@ logger.LogInformation(
     logger.LogInformation(
         "Configured automation sequence completed.");
 
+#endif
 #endif
         }
         catch (Exception ex)
