@@ -3,7 +3,7 @@ using OCRUtilityServices.Services;
 using CoordinateUtilityServices;
 using FluentAssertions;
 using Moq;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
 
 namespace OmniAppium.EngineUtilityServices.Tests.Services.Grounding;

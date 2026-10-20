@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.OCR;
 using Xunit;
 

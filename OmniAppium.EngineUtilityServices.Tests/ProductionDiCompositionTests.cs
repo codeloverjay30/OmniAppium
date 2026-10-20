@@ -13,7 +13,7 @@ using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.EngineUtilityServices.Models.Stability;

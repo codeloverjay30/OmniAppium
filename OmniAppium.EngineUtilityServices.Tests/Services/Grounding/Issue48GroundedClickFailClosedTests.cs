@@ -3,7 +3,7 @@ using FluentAssertions;
 using Moq;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
 
 namespace OmniAppium.EngineUtilityServices.Tests.Services.Grounding;

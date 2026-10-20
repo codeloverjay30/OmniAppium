@@ -1,7 +1,7 @@
 using CoordinateUtilityServices;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 
 namespace OmniAppium.EngineUtilityServices.Services.Grounding;
 

@@ -1,7 +1,7 @@
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
 using OmniAppium.ConfigUtilityServices.Models;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
 using OmniAppium.EngineUtilityServices.Services.OCR;
 

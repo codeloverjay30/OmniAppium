@@ -305,7 +305,7 @@ logger.LogInformation(
                     currentScreenSize.Width,
                     currentScreenSize.Height);
 
-            ClickService clickService =
+            IClickService clickService =
                 new ClickService(
                     loggerFactoryService,
                     true)

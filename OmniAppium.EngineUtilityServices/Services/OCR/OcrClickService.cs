@@ -4,7 +4,7 @@ using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 using OCRUtilityServices.Models;
 using OCRUtilityServices.Services;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityService.Utilities;
 
 namespace OmniAppium.EngineUtilityServices.Services.OCR;

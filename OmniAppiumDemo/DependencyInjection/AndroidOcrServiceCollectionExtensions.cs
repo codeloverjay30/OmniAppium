@@ -2,7 +2,7 @@ using System.IO.Abstractions;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.DependencyInjection;
 using OCRUtilityServices.Services;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityServices.Services.OCR;
 using OmniAppium.EngineUtilityServices.Workflows;

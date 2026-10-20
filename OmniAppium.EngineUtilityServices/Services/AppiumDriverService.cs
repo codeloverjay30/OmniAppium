@@ -5,7 +5,7 @@ using Microsoft.Identity.Client;
 using OmniAppium.BaseUtilityServices;
 using OmniAppium.ConfigUtilityServices.Models;
 using OmniAppium.ConfigUtilityServices.Services;
-using OmniAppium.EngineUtilityService.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Services.Wait;
 using OmniAppium.EngineUtilityService.Utilities;
