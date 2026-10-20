@@ -1,4 +1,4 @@
-namespace OmniAppium.ConfigUtilityService.Models;
+namespace OmniAppium.ConfigUtilityServices.Models;
 
 /// <summary>
 /// Represents an automation job that performs a click operation.

@@ -2,9 +2,9 @@
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OmniAppium.BaseUtilityService;
-using OmniAppium.ConfigUtilityService.Models;
-using OmniAppium.ConfigUtilityService.Services;
+using OmniAppium.BaseUtilityServices;
+using OmniAppium.ConfigUtilityServices.Models;
+using OmniAppium.ConfigUtilityServices.Services;
 using OpenQA.Selenium.Appium;
 using OpenQA.Selenium.Appium.Android;
 using System;
@@ -13,7 +13,7 @@ using System.Linq.Expressions;
 using System.Text;
 using TransversalUtilityServices;
 
-namespace OmniAppium.ConfigUtilityService.Factories
+namespace OmniAppium.ConfigUtilityServices.Factories
 {
     public partial class DriverFactory(
         ILoggerFactoryBaseUtilityService loggerFactoryService ,

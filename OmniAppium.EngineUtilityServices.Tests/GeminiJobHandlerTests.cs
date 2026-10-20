@@ -11,7 +11,7 @@ using FluentAssertions;
 using JsonUtilityServices;
 using Moq;
 using OCRUtilityServices.Models;
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.EngineUtilityServices.Models.Observation;
 using OmniAppium.EngineUtilityServices.Services.Observation;

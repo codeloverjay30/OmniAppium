@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Models
+namespace OmniAppium.ConfigUtilityServices.Models
 {
     public class ConfigBean<T>
     where T : class

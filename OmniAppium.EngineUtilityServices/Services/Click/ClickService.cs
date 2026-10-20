@@ -2,8 +2,8 @@ using AiUtility.GeminiKits.Attributes;
 using CoordinateUtilityServices;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
-using OmniAppium.BaseUtilityService;
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.BaseUtilityServices;
+using OmniAppium.ConfigUtilityServices.Models;
 using OmniAppium.EngineUtilityService.Services.Screen;
 using OpenQA.Selenium.Appium.Android;
 using OpenQA.Selenium.Interactions;
@@ -11,7 +11,7 @@ using System.Drawing;
 using System.Text.Json;
 using Point = CoordinateUtilityServices.Point;
 
-namespace OmniAppium.EngineUtilityService.Services.Click
+namespace OmniAppium.EngineUtilityServices.Services.Click
 {
     /// <summary>
     /// Provides Appium click operations in absolute and reference-resolution coordinates.
@@ -243,7 +243,7 @@ namespace OmniAppium.EngineUtilityService.Services.Click
         /// Indicates whether the position should be scaled before execution.
         /// </param>
         public void ClickPosition(
-            OmniAppium.ConfigUtilityService.Models.Point position,
+            OmniAppium.ConfigUtilityServices.Models.Point position,
             bool scalePosition)
         {
             ArgumentNullException.ThrowIfNull(position);

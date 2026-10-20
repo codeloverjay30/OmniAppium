@@ -3,8 +3,8 @@
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 using NetRuntimeUtilityServices;
-using OmniAppium.BaseUtilityService;
-using OmniAppium.ConfigUtilityService.Extensions;
+using OmniAppium.BaseUtilityServices;
+using OmniAppium.ConfigUtilityServices.Extensions;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Appium.Android;
 using System.Diagnostics;
@@ -13,7 +13,7 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
-using OmniRectangle = OmniAppium.ConfigUtilityService.Models.Rectangle; // 你的自定義類別
+using OmniRectangle = OmniAppium.ConfigUtilityServices.Models.Rectangle; // 你的自定義類別
 
 namespace OmniAppium.EngineUtilityService.Services.Screenshots
 {

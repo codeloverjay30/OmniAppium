@@ -1,10 +1,10 @@
 ﻿using FluentValidation;
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Validators
+namespace OmniAppium.ConfigUtilityServices.Validators
 {
     public class ConnectionConfigValidator :AbstractValidator<ConnectionConfig>, IConfigValidator
     {

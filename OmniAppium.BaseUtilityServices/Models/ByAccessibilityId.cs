@@ -1,6 +1,6 @@
-using OmniAppium.ConfigUtilityService.Services;
+using OmniAppium.ConfigUtilityServices.Services;
 
-namespace OmniAppium.ConfigUtilityService.Models
+namespace OmniAppium.ConfigUtilityServices.Models
 {
     public class ByAccessibilityId : Target, IValidatable
     {

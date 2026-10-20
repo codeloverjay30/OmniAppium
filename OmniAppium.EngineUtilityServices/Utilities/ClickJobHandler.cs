@@ -1,5 +1,5 @@
-﻿using OmniAppium.ConfigUtilityService.Models;
-using OmniAppium.EngineUtilityService.Services.Click;
+﻿using OmniAppium.ConfigUtilityServices.Models;
+using OmniAppium.EngineUtilityServices.Services.Click;
 
 namespace OmniAppium.EngineUtilityService.Utilities;
 

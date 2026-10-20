@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Validators
+namespace OmniAppium.ConfigUtilityServices.Validators
 {
     public class GameConfigValidator:AbstractValidator<GameConfigValidator>, IConfigValidator
     {

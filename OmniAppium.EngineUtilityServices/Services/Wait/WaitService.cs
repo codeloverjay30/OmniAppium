@@ -1,7 +1,7 @@
 using AiUtility.GeminiKits.Attributes;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
-using OmniAppium.BaseUtilityService;
+using OmniAppium.BaseUtilityServices;
 using OpenQA.Selenium.Appium.Android;
 
 namespace OmniAppium.EngineUtilityService.Services.Wait

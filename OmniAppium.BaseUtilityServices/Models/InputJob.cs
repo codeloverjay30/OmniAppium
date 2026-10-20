@@ -1,4 +1,4 @@
-namespace OmniAppium.ConfigUtilityService.Models
+namespace OmniAppium.ConfigUtilityServices.Models
 {
     public class InputJob : Job
     {

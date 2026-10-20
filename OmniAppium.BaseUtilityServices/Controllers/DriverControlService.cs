@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Controllers
+namespace OmniAppium.ConfigUtilityServices.Controllers
 {
     public class DriverControlService
     {

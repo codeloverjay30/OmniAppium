@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace OmniAppium.ConfigUtilityService.Models
+namespace OmniAppium.ConfigUtilityServices.Models
 {
     [JsonPolymorphic(TypeDiscriminatorPropertyName = "Type")] // 指定 JSON 裡的欄位名稱叫 "Type"
     [JsonDerivedType(typeof(ByXPathExpression), typeDiscriminator: "XPath")]

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Models
+namespace OmniAppium.ConfigUtilityServices.Models
 {
     public class AppiumConfig
     {

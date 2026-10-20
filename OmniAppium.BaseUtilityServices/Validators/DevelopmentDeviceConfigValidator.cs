@@ -1,11 +1,11 @@
 ﻿using FluentValidation;
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Validators
+namespace OmniAppium.ConfigUtilityServices.Validators
 {
     public class DevelopmentDeviceConfigValidator : AbstractValidator<DevelopmentDeviceConfig>, IConfigValidator
     {

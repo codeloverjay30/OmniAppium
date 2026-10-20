@@ -16,7 +16,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OCRUtilityServices.Models;
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.EngineUtilityServices.Models.Observation;
 using OmniAppium.EngineUtilityServices.Models.Stability;
@@ -47,8 +47,8 @@ using ExpressionTreeUtilityServices;
 using JsonUtilityServices;
 using LoggerFactoryUtilityServices;
 
-using OmniAppium.ConfigUtilityService.Controllers;
-using OmniAppium.ConfigUtilityService.Factories;
+using OmniAppium.ConfigUtilityServices.Controllers;
+using OmniAppium.ConfigUtilityServices.Factories;
 using OmniAppium.EngineUtilityService.Services.Click;
 using OmniAppium.EngineUtilityService.Services.Screen;
 using OmniAppium.EngineUtilityService.Services.Screenshots;

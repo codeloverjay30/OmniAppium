@@ -1,12 +1,12 @@
 using FileStreamUtilityServices;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
-using OmniAppium.BaseUtilityService;
-using OmniAppium.ConfigUtilityService.Validators;
+using OmniAppium.BaseUtilityServices;
+using OmniAppium.ConfigUtilityServices.Validators;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using TransversalUtilityServices;
-namespace OmniAppium.ConfigUtilityService.Services
+namespace OmniAppium.ConfigUtilityServices.Services
 {
         public class ConfigService<T>(
             ILoggerFactoryBaseUtilityService loggerFactoryService

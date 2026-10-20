@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Services
+namespace OmniAppium.ConfigUtilityServices.Services
 {
     public interface IValidatable
     {

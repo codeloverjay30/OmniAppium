@@ -1,8 +1,8 @@
 using ExceptionFactories;
-using OmniAppium.ConfigUtilityService.Services;
+using OmniAppium.ConfigUtilityServices.Services;
 using TransversalUtilityServices;
 
-namespace OmniAppium.ConfigUtilityService.Validators
+namespace OmniAppium.ConfigUtilityServices.Validators
 {
     public class ConfigValidator<T>
          where T : class

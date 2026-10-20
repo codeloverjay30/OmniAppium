@@ -1,4 +1,4 @@
-﻿using OmniAppium.ConfigUtilityService.Models;
+﻿using OmniAppium.ConfigUtilityServices.Models;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using System;
 using System.Collections.Generic;

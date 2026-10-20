@@ -4,7 +4,7 @@ using AiUtility.GeminiUtilityServices.Services;
 using AssemblyUtilityServices;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 using System;
 using System.Collections.Generic;
 using System.Text;

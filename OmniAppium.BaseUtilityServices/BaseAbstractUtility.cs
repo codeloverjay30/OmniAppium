@@ -2,7 +2,7 @@ using ExceptionHandlingUtilityServices;
 using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 
-namespace OmniAppium.BaseUtilityService
+namespace OmniAppium.BaseUtilityServices
 {
     public abstract class BaseAbstractUtility(
         ILoggerFactoryBaseUtilityService loggerFactoryService ,

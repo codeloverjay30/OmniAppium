@@ -1,4 +1,6 @@
-namespace OmniAppium.EngineUtilityServices.Services.Stability;
+using OmniAppium.EngineUtilityServices.Services.Stability;
+
+namespace OmniAppium.EngineUtilityServices.Models.Stability;
 
 /// <summary>
 /// Creates isolated, stateful OCR target stability evaluators.

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace OmniAppium.BaseUtilityService.Words
+namespace OmniAppium.BaseUtilityServices.Words
 {
     public static class Status
     {

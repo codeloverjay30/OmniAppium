@@ -1,5 +1,5 @@
 ﻿using AiUtility.AiBaseUtilityServices.Models;
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 using System;
 using System.Collections.Generic;
 using System.Text;

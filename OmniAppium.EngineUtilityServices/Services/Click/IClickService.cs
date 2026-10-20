@@ -1,6 +1,6 @@
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 
-namespace OmniAppium.EngineUtilityService.Services.Click;
+namespace OmniAppium.EngineUtilityServices.Services.Click;
 
 /// <summary>
 /// Defines click operations for the automation engine.

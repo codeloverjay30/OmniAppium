@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
 
-namespace OmniAppium.BaseUtilityService
+namespace OmniAppium.BaseUtilityServices
 {
     public class BaseUtility(
         ILoggerFactoryBaseUtilityService loggerFactoryService ,

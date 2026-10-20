@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace OmniAppium.ConfigUtilityService.Models;
+namespace OmniAppium.ConfigUtilityServices.Models;
 
 /// <summary>
 /// Represents the base model for an automation job.

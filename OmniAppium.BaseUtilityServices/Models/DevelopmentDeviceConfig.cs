@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Models
+namespace OmniAppium.ConfigUtilityServices.Models
 {
     /// <summary>
     /// 開發裝置(i.e. 測試用的裝置) (如:我的手機)的相關組態

@@ -1,4 +1,4 @@
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 using OmniAppium.EngineUtilityService.Utilities;
 
 namespace OmniAppium.EngineUtilityService.Services

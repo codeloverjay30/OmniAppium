@@ -1,4 +1,4 @@
-namespace OmniAppium.ConfigUtilityService.Models;
+namespace OmniAppium.ConfigUtilityServices.Models;
 
 /// <summary>
 /// Defines how a configured screen coordinate should be interpreted.

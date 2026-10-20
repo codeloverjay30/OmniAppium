@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace OmniAppium.ConfigUtilityService.Validators
+namespace OmniAppium.ConfigUtilityServices.Validators
 {
     public interface IConfigValidator
     {

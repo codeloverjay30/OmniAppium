@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing; // 系統級
 using System.Text;
-using OmniRectangle = OmniAppium.ConfigUtilityService.Models.Rectangle; // 你的自定義類別
+using OmniRectangle = OmniAppium.ConfigUtilityServices.Models.Rectangle; // 你的自定義類別
 
 namespace OmniAppium.EngineUtilityService.Services.Screenshots
 {

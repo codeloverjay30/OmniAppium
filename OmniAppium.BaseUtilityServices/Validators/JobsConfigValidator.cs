@@ -1,6 +1,6 @@
-using OmniAppium.ConfigUtilityService.Models;
+using OmniAppium.ConfigUtilityServices.Models;
 
-namespace OmniAppium.ConfigUtilityService.Validators;
+namespace OmniAppium.ConfigUtilityServices.Validators;
 
 /// <summary>
 /// Validates the jobs configuration and ensures that its required invariants are satisfied.
