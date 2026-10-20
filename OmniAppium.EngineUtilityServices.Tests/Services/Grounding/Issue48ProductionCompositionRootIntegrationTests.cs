@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using OmniAppium.EngineUtilityService.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
 using OmniAppium.EngineUtilityServices.Services.OCR;
 using OmniAppium.EngineUtilityServices.Services.Planner;

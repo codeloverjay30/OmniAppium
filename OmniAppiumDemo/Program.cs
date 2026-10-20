@@ -49,7 +49,6 @@ using LoggerFactoryUtilityServices;
 
 using OmniAppium.ConfigUtilityServices.Controllers;
 using OmniAppium.ConfigUtilityServices.Factories;
-using OmniAppium.EngineUtilityService.Services.Click;
 using OmniAppium.EngineUtilityService.Services.Screen;
 using OmniAppium.EngineUtilityService.Services.Screenshots;
 using OmniAppium.EngineUtilityService.Services.Wait;
@@ -67,6 +66,7 @@ using OmniAppiumDemo.Games.BeautyThreeKingdoms.Startup;
 using OmniAppium.EngineUtilityServices.Startup;
 using OCRUtilityServices.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OmniAppium.EngineUtilityServices.Services.Click;
 
 
 namespace OmniAppiumDemo;

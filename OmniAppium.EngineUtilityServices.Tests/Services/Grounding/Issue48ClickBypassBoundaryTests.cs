@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using OmniAppium.ConfigUtilityServices.Models;
-using OmniAppium.EngineUtilityService.Services.Click;
 using OmniAppium.EngineUtilityService.Utilities;
 using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
