@@ -229,6 +229,7 @@ namespace OmniAppium.EngineUtilityServices.Services.Click
             catch
             {
                 LogFailureForTapingAt(_logger, jsonStr);
+                throw;
             }
         }
 
