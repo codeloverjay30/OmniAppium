@@ -696,6 +696,9 @@ logger.LogInformation(
                 IGameStartupCoordinator,
                 GameStartupCoordinator>();
 
+            // Issue 54 provisioning is opt-in and does not sign or create approvals.
+            services.AddIssue54SmokeProvisioning(args);
+
             // Apply the production click security policy last.
             services.AddProductionClickSecurity();
 
