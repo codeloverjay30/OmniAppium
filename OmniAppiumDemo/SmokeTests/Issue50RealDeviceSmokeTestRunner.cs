@@ -58,17 +58,93 @@ public static class Issue50RealDeviceSmokeTestRunner
                 catch (InvalidOperationException ex) when (
                     ex.Message.Contains("Trusted signed review approval is required", StringComparison.Ordinal))
                 {
-                    logger.LogInformation("PASS: production rejected an unauthorized grounded click: {Reason}", ex.Message);
+                    logger.LogInformation("PASS: production rejected unauthorized grounded click. Category=AuthorizationOrClaim.");
                     logger.LogWarning("Device zero-tap verification requires independent Appium/device event monitoring.");
                     return 0;
                 }
             }
             case "protected-valid":
-                logger.LogWarning(
-                    "BLOCKED: production IOcrGroundedClickService is RejectingProductionGroundedClickService. " +
-                    "A signed trusted-review approval and its supported execution path are required; " +
-                    "this runner will not bypass the security boundary.");
-                return 2;
+            {
+                if (!args.Contains("--issue54-protected-confirmed", StringComparer.Ordinal))
+                {
+                    logger.LogWarning("NOT RUN: protected-valid requires --issue54-protected-confirmed.");
+                    return 2;
+                }
+
+                // Evidence must come from an independently trusted review workflow.
+                // Never create or sign approvals in the smoke runner.
+                TrustedGroundedClickRequest? request =
+                    productionServices.GetService<TrustedGroundedClickRequest>();
+                ITrustedGroundedClickService? trustedClick =
+                    productionServices.GetService<ITrustedGroundedClickService>();
+
+                if (request is null || trustedClick is null)
+                {
+                    logger.LogWarning(
+                        "NOT RUN: signed approval request or trusted click service is not provisioned.");
+                    return 2;
+                }
+
+                if (Console.IsInputRedirected)
+                {
+                    logger.LogWarning("NOT RUN: interactive operator confirmation is required.");
+                    return 2;
+                }
+
+                Console.Write("Type ISSUE54-PROTECTED-TAP to authorize one protected device tap: ");
+                if (!string.Equals(
+                    Console.ReadLine(), "ISSUE54-PROTECTED-TAP", StringComparison.Ordinal))
+                {
+                    logger.LogWarning("NOT RUN: operator did not confirm protected device input.");
+                    return 2;
+                }
+
+                // A completed Appium call is not proof of physical screen state change.
+                TrustedClickExecutionOutcome first =
+                    await trustedClick.ExecuteWithOutcomeAsync(request, cancellationToken)
+                        .ConfigureAwait(false);
+
+                logger.LogInformation(
+                    "Protected first attempt: Status={Status}; FailureCategory={Category}; DispatchAttempted={Attempted}",
+                    first.Status, first.FailureCategory, first.DispatchAttempted);
+
+                if (first.Status != TrustedClickExecutionStatus.DispatchCompleted ||
+                    !first.DispatchAttempted)
+                {
+                    logger.LogError(
+                        "FAILED: protected execution was not completed. Do not retry ambiguous dispatch.");
+                    return 1;
+                }
+
+                // The same approval must never cause a second dispatch.
+                // Freshness may reject a changed screen before the claim store is reached.
+                TrustedClickExecutionOutcome replay =
+                    await trustedClick.ExecuteWithOutcomeAsync(request, cancellationToken)
+                        .ConfigureAwait(false);
+
+                logger.LogInformation(
+                    "Protected replay: Status={Status}; FailureCategory={Category}; DispatchAttempted={Attempted}",
+                    replay.Status, replay.FailureCategory, replay.DispatchAttempted);
+
+                if (replay.DispatchAttempted)
+                {
+                    logger.LogError("FAILED: replay attempted a second device dispatch.");
+                    return 1;
+                }
+
+                if (replay.Status != TrustedClickExecutionStatus.RejectedAlreadyConsumed)
+                {
+                    logger.LogWarning(
+                        "INCONCLUSIVE: replay did not dispatch, but claim rejection was not observable. " +
+                        "A changed screen may fail freshness before reaching the claim store.");
+                    return 2;
+                }
+
+                logger.LogInformation(
+                    "PASS: protected dispatch completed and replay was rejected. " +
+                    "Verify physical tap count and target response independently.");
+                return 0;
+            }
 
             case "direct-coordinate":
             {

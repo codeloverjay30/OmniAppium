@@ -9,4 +9,11 @@ public interface ITrustedGroundedClickService
     /// Authorizes evidence and executes at most one device click.
     /// </summary>
     Task ClickAsync(TrustedGroundedClickRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes a protected click and returns sanitized diagnostics instead of throwing execution errors.
+    /// </summary>
+    Task<TrustedClickExecutionOutcome> ExecuteWithOutcomeAsync(
+        TrustedGroundedClickRequest request,
+        CancellationToken cancellationToken = default);
 }

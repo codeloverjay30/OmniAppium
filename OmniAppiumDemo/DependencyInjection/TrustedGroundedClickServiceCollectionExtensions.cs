@@ -29,7 +29,18 @@ public static class TrustedGroundedClickServiceCollectionExtensions
             TrustedGroundedClickAuthorizationFactory.Create(
                 sp.GetRequiredService<IFileSystem>(), keys,
                 sp.GetService<TimeProvider>()));
+        services.AddSingleton<ITrustedReviewApprovalVerifier>(sp =>
+            new TrustedReviewApprovalVerifier(keys, sp.GetService<TimeProvider>()));
+        services.AddSingleton<IApprovalConsumptionStore>(sp =>
+            new FileApprovalConsumptionStore(
+                sp.GetRequiredService<IFileSystem>(),
+                sp.GetRequiredService<Issue54ClaimDirectory>().Path));
+        services.AddSingleton<ITrustedApprovalExecutionGate, TrustedApprovalExecutionGate>();
         services.AddSingleton<ITrustedGroundedClickService, TrustedGroundedClickService>();
         return services;
     }
 }
+/// <summary>
+/// Holds an externally controlled persistent directory for irreversible approval claims.
+/// </summary>
+public sealed record Issue54ClaimDirectory(string Path);

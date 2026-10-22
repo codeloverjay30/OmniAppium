@@ -32,9 +32,72 @@ public sealed class TrustedGroundedClickService : ITrustedGroundedClickService
     /// <summary>
     /// Validates the grounded target and dispatches a click only after atomic approval consumption.
     /// </summary>
-    public async Task ClickAsync(
+    public Task ClickAsync(
+        TrustedGroundedClickRequest request,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(request, null, cancellationToken);
+
+    /// <summary>
+    /// Executes a trusted click and returns a sanitized outcome without exposing approval evidence.
+    /// </summary>
+    public async Task<TrustedClickExecutionOutcome> ExecuteWithOutcomeAsync(
         TrustedGroundedClickRequest request,
         CancellationToken cancellationToken = default)
+    {
+        var state = new DispatchState();
+        try
+        {
+            await ExecuteCoreAsync(request, state, cancellationToken).ConfigureAwait(false);
+            return new TrustedClickExecutionOutcome(
+                TrustedClickExecutionStatus.DispatchCompleted,
+                TrustedClickFailureCategory.None,
+                DispatchAttempted: true);
+        }
+        catch (Exception exception)
+        {
+            bool dispatched = state.Attempted;
+            TrustedClickExecutionStatus status = dispatched
+                ? TrustedClickExecutionStatus.DispatchFailedOrAmbiguous
+                : state.GateEntered
+                    ? TrustedClickExecutionStatus.RejectedOrConsumedUndetermined
+                    : TrustedClickExecutionStatus.RejectedBeforeConsumption;
+
+            if (!dispatched && state.GateEntered &&
+                exception is InvalidOperationException &&
+                string.Equals(exception.Message, "Approval has already been claimed.", StringComparison.Ordinal))
+            {
+                status = TrustedClickExecutionStatus.RejectedAlreadyConsumed;
+            }
+
+            TrustedClickFailureCategory category = exception switch
+            {
+                OperationCanceledException => TrustedClickFailureCategory.Cancellation,
+                TimeoutException => TrustedClickFailureCategory.Timeout,
+                ArgumentException => TrustedClickFailureCategory.InvalidRequest,
+                InvalidOperationException => TrustedClickFailureCategory.AuthorizationOrClaim,
+                _ => TrustedClickFailureCategory.Unexpected
+            };
+
+            return new TrustedClickExecutionOutcome(status, category, dispatched);
+        }
+    }
+
+    /// <summary>
+    /// Tracks dispatch transitions without storing approval or device details.
+    /// </summary>
+    private sealed class DispatchState
+    {
+        internal bool GateEntered;
+        internal bool Attempted;
+    }
+
+    /// <summary>
+    /// Performs the original fail-closed approval and device-dispatch workflow.
+    /// </summary>
+    private async Task ExecuteCoreAsync(
+        TrustedGroundedClickRequest request,
+        DispatchState? state,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -83,6 +146,9 @@ public sealed class TrustedGroundedClickService : ITrustedGroundedClickService
         if (!double.IsFinite(x) || !double.IsFinite(y))
             throw new InvalidOperationException("Authorized coordinates must be finite.");
 
+        if (state is not null)
+            state.GateEntered = true;
+
         await _executionGate.ExecuteAsync(
             request.Approval,
             request.TrustedReviewSha256,
@@ -92,6 +158,9 @@ public sealed class TrustedGroundedClickService : ITrustedGroundedClickService
             {
                 operationToken.ThrowIfCancellationRequested();
                 _freshness.ThrowIfStale(snapshot);
+                if (state is not null)
+                    state.Attempted = true;
+
                 _click.ClickAbsolute(x, y);
                 return Task.CompletedTask;
             },
