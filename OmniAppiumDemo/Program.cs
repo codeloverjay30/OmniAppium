@@ -70,6 +70,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.AiSecurity;
 using OmniAppiumDemo.SmokeTests;
+using OmniAppiumDemo.SmokeTests.Issue55;
 
 
 namespace OmniAppiumDemo;
@@ -174,6 +175,118 @@ public static class Program
         ITransversalService transversalService =
             new DFSTransversalService();
 
+        if (args.Contains("--issue55-smoke", StringComparer.Ordinal))
+        {
+            bool confirmed =
+                args.Contains(
+                    "--issue55-development-confirmed",
+                    StringComparer.Ordinal)
+                && !Console.IsInputRedirected
+                && ConfirmIssue55Operation();
+
+            using var successObserver =
+                new Issue55ClickSuccessLogObserver();
+
+            using var issue55LoggerFactory = LoggerFactory.Create(builder =>
+            {
+                builder.SetMinimumLevel(LogLevel.Information);
+                builder.AddProvider(successObserver);
+            });
+
+
+            ILoggerFactoryBaseUtilityService issue55LoggerFactoryService =
+                new LoggerFactoryBaseUtilityService(issue55LoggerFactory);
+    
+            Issue55SmokeResult result =
+                await Issue55SmokeBootstrapper.RunIssue55SmokeAsync(
+                    upstreamEndpoint: new Uri("http://127.0.0.1:4723/"),
+
+                    createDriver: proxyEndpoint =>
+                    {
+                        var factory = new DriverFactory(
+                            loggerFactoryService,
+                            true)
+                        {
+                            DevelopmentDeviceConfig =
+                                new ConfigBean<DevelopmentDeviceConfig>
+                                {
+                                    Path = developmentDeviceConfigPath
+                                },
+                            AppiumConfig =
+                                new ConfigBean<AppiumConfig>
+                                {
+                                    Path = appiumConfigPath
+                                },
+                            AppConfig =
+                                new ConfigBean<AppConfig>
+                                {
+                                    Path = appConfigPath
+                                },
+                            ConnectionConfig =
+                                new ConfigBean<ConnectionConfig>
+                                {
+                                    Path = connectionConfigPath
+                                },
+                            GameConfig =
+                                new ConfigBean<GameConfig>
+                                {
+                                    Path = gameConfigPath
+                                },
+                            TransversalService = transversalService
+                        };
+
+                        factory.Initialize();
+
+                        factory.AppiumConfig.Data.AppiumServerUri =
+                            proxyEndpoint.AbsoluteUri;
+
+                        return factory.Create();
+                    },
+
+                    createTapAction: driver =>
+                    {
+                        var screenService = new AndroidScreenService
+                        {
+                            Driver = driver
+                        };
+
+                        var clickService = new ClickService(
+                            issue55LoggerFactoryService,
+                            toLogWhenSuccess: true)
+                        {
+                            ScreenService = screenService,
+
+                            // Issue #55 tests absolute coordinates only.
+                            // The scaler is required by the class but is not used by ClickAbsolute.
+                            Scaler = new ResolutionScaler(1, 1, 1, 1)
+                        };
+
+                        return () => clickService.ClickAbsolute(1, 1);
+                    },
+
+                    successLogObserved: () => successObserver.SuccessLogObserved,
+
+                    confirmed: confirmed,
+                    proxyLogger: loggerFactoryService.LoggerFactory.CreateLogger<Issue55AppiumFaultProxy>()
+                );
+
+            logger.LogInformation(
+                "Issue55 smoke: {Status}; {Reason}; " +
+                "Actions={Actions}; Injected={Injected}; Forwarded={Forwarded}",
+                result.Status,
+                result.Reason,
+                result.ActionRequests,
+                result.InjectedFailures,
+                result.ForwardedActionRequests);
+
+            return result.Status switch
+            {
+                Issue55SmokeStatus.Passed => 0,
+                Issue55SmokeStatus.Failed => 1,
+                _ => 2
+            };
+        }
+        
         var driverFactory =
             new DriverFactory(
                 loggerFactoryService,
@@ -1167,5 +1280,22 @@ logger.LogInformation(
         // IScreenshotService, IAndroidScreenOcrService and
         // IAndroidScreenStabilityGuard must already be registered by the host.
         return services;
+    }
+
+    /// <summary>
+    /// Requests explicit operator confirmation for the Issue 55 diagnostic.
+    /// </summary>
+    /// <returns>True when the exact confirmation phrase is entered.</returns>
+    private static bool ConfirmIssue55Operation()
+    {
+        Console.Write(
+            "Type ISSUE55-DISPATCH-FAILURE to continue: ");
+
+        string? confirmation = Console.ReadLine();
+
+        return string.Equals(
+            confirmation,
+            "ISSUE55-DISPATCH-FAILURE",
+            StringComparison.Ordinal);
     }
 }
