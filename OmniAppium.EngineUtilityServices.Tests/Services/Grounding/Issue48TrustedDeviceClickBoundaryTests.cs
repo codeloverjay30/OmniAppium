@@ -16,6 +16,7 @@ public sealed class Issue48TrustedDeviceClickBoundaryTests
         var guard = new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
         var lease = new Mock<IOcrGroundedActionLease>(MockBehavior.Strict);
         var auth = new Mock<ITrustedReviewIntegrityAuthorizationService>(MockBehavior.Strict);
+        var gate = new Mock<ITrustedApprovalExecutionGate>(MockBehavior.Strict);
         TrustedGroundedClickRequest request = CreateRequest();
         guard.Setup(g => g.AcquireCurrent(request.Snapshot)).Returns(lease.Object);
         lease.Setup(l => l.Dispose());
@@ -26,12 +27,13 @@ public sealed class Issue48TrustedDeviceClickBoundaryTests
             request.TrustedScreenshotSha256, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Approval signature is invalid."));
 
-        var sut = new TrustedGroundedClickService(click.Object, guard.Object, auth.Object);
+        var sut = new TrustedGroundedClickService(click.Object, guard.Object, auth.Object, gate.Object);
         Func<Task> act = () => sut.ClickAsync(request);
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Approval signature is invalid*");
         click.Verify(c => c.ClickAbsolute(It.IsAny<double>(), It.IsAny<double>()), Times.Never);
         click.VerifyNoOtherCalls();
+        gate.VerifyNoOtherCalls();
         lease.Verify(l => l.Dispose(), Times.Once);
     }
 
@@ -41,14 +43,16 @@ public sealed class Issue48TrustedDeviceClickBoundaryTests
         var click = new Mock<IClickService>(MockBehavior.Strict);
         var guard = new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
         var auth = new Mock<ITrustedReviewIntegrityAuthorizationService>(MockBehavior.Strict);
+        var gate = new Mock<ITrustedApprovalExecutionGate>(MockBehavior.Strict);
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        var sut = new TrustedGroundedClickService(click.Object, guard.Object, auth.Object);
+        var sut = new TrustedGroundedClickService(click.Object, guard.Object, auth.Object, gate.Object);
         Func<Task> act = () => sut.ClickAsync(CreateRequest(), cts.Token);
         await act.Should().ThrowAsync<OperationCanceledException>();
         click.VerifyNoOtherCalls();
         guard.VerifyNoOtherCalls();
         auth.VerifyNoOtherCalls();
+        gate.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -58,6 +62,7 @@ public sealed class Issue48TrustedDeviceClickBoundaryTests
         var guard = new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
         var lease = new Mock<IOcrGroundedActionLease>(MockBehavior.Strict);
         var auth = new Mock<ITrustedReviewIntegrityAuthorizationService>(MockBehavior.Strict);
+        var gate = new Mock<ITrustedApprovalExecutionGate>(MockBehavior.Strict);
         TrustedGroundedClickRequest request = CreateRequest();
         guard.Setup(g => g.AcquireCurrent(request.Snapshot)).Returns(lease.Object);
         guard.Setup(g => g.ThrowIfStale(request.Snapshot));
@@ -68,9 +73,19 @@ public sealed class Issue48TrustedDeviceClickBoundaryTests
             request.TrustedReviewSha256, request.TrustedAnnotationSha256,
             request.TrustedScreenshotSha256, It.IsAny<CancellationToken>()))
             .ReturnsAsync((15d, 25d));
+        gate.Setup(g => g.ExecuteAsync(
+                request.Approval, request.TrustedReviewSha256,
+                request.TrustedAnnotationSha256, request.TrustedScreenshotSha256,
+                It.IsAny<Func<CancellationToken, Task>>(), It.IsAny<CancellationToken>()))
+            .Returns((TrustedReviewApprovalEvidence _, string _, string _, string _,
+                Func<CancellationToken, Task> operation, CancellationToken ct) => operation(ct));
         click.Setup(c => c.ClickAbsolute(15d, 25d));
-        var sut = new TrustedGroundedClickService(click.Object, guard.Object, auth.Object);
+        var sut = new TrustedGroundedClickService(click.Object, guard.Object, auth.Object, gate.Object);
         await sut.ClickAsync(request);
+        gate.Verify(g => g.ExecuteAsync(
+            request.Approval, request.TrustedReviewSha256,
+            request.TrustedAnnotationSha256, request.TrustedScreenshotSha256,
+            It.IsAny<Func<CancellationToken, Task>>(), It.IsAny<CancellationToken>()), Times.Once);
         click.Verify(c => c.ClickAbsolute(15d, 25d), Times.Once);
         click.VerifyNoOtherCalls();
         lease.Verify(l => l.Dispose(), Times.Once);
