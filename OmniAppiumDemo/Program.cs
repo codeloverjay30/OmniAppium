@@ -34,6 +34,7 @@ using AiUtility.GeminiKits.Executor;
 using AiUtility.GeminiKits.Mappers;
 using AiUtility.GeminiKits.Registry;
 using AiUtility.GeminiKits.Services;
+using AiUtility.GeminiKits.Security;
 using AiUtility.GeminiUtilityServices.Configs;
 using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
@@ -67,6 +68,8 @@ using OmniAppium.EngineUtilityServices.Startup;
 using OCRUtilityServices.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OmniAppium.EngineUtilityServices.Services.Click;
+using OmniAppium.EngineUtilityServices.Services.AiSecurity;
+using OmniAppiumDemo.SmokeTests;
 
 
 namespace OmniAppiumDemo;
@@ -79,7 +82,7 @@ public static class Program
     /// <summary>
     /// Initializes the Appium demo and runs the selected smoke test or automation mode.
     /// </summary>
-    public static async Task Main(string[] args)
+    public static async Task<int> Main(string[] args)
     {
 
 #if DEVELOPING
@@ -400,7 +403,7 @@ logger.LogInformation(
             services.AddSingleton<
                 IOcrGroundedClickService,
                 RejectingProductionGroundedClickService>();
-    
+
             // --------------------------------------------------------
             // 7.5. Production planner.
             // --------------------------------------------------------
@@ -414,6 +417,8 @@ logger.LogInformation(
             services.AddSingleton<
                 IOcrGroundedPlannerActionExecutor,
                 OcrGroundedPlannerActionExecutor>();
+
+            services.AddSingleton<OcrGroundedPlannerClickTool>();
 
             services.AddSingleton<
                 IOcrGroundedPlannerExecutionScopeFactory,
@@ -619,10 +624,17 @@ logger.LogInformation(
                     loggerFactoryService,
                     geminiApiClient);
 
+            // Deny unapproved methods even if they are registered later.
+            const AiClickExecutionMode aiClickMode = AiClickExecutionMode.Protected;
+            const bool isProductionAiRuntime = true;
+            GeminiToolExecutionPolicy aiExecutionPolicy =
+                GeminiClickExecutionPolicyFactory.Create(aiClickMode, isProductionAiRuntime);
+
             IGeminiToolExecutor geminiToolExecutor =
                 new GeminiToolExecutor(
                     geminiToolRegistry,
-                    typeUtilityService);
+                    typeUtilityService,
+                    aiExecutionPolicy);
 
             IGeminiSessionManager geminiSessionManager =
                 new GeminiSessionManager(
@@ -641,13 +653,20 @@ logger.LogInformation(
                             progress);
                     });
 
+            OcrGroundedPlannerClickTool? aiPlannerClickTool = null;
+
             // Register real Appium tools only for automation mode.
             // The read-only smoke test should not expose mutating tools.
 
 #if AUTO_EXECUTE_TASKS
 
-    geminiToolRegistry.Register<ClickService>(
-        () => clickService);
+    // Production is always Protected. Direct AI clicking is permitted only
+    // when explicitly selected for a non-production development run.
+    geminiToolRegistry.RegisterAiClickTools(
+        aiClickMode,
+        isProductionAiRuntime,
+        () => clickService,
+        () => aiPlannerClickTool ?? throw new InvalidOperationException("Planner tool is not initialized."));
 
     geminiToolRegistry.Register<WaitService>(
         () => waitService);
@@ -676,10 +695,10 @@ logger.LogInformation(
             services.AddTransient<
                 IGameStartupCoordinator,
                 GameStartupCoordinator>();
-            
+
             // Apply the production click security policy last.
             services.AddProductionClickSecurity();
-        
+
             // ========================================================
             // 9. Build the service provider exactly once.
             // ========================================================
@@ -692,7 +711,29 @@ logger.LogInformation(
                         ValidateScopes = true
                     });
 
+            if (args.Contains("--issue50-smoke", StringComparer.Ordinal))
+            {
+                if (clickService is not ClickService realClickService)
+                {
+                    throw new InvalidOperationException(
+                        "Issue 50 smoke test requires the concrete ClickService.");
+                }
+
+                var result = await Issue50RealDeviceSmokeTestRunner.RunAsync(
+                    args,
+                    realClickService,
+                    serviceProvider,
+                    logger,
+                    CancellationToken.None);
+
+                return result;
+            }
+
             // ========================================================
+#if AUTO_EXECUTE_TASKS
+            aiPlannerClickTool = serviceProvider.GetRequiredService<OcrGroundedPlannerClickTool>();
+#endif
+
             // 10. Resolve production services.
             // ========================================================
 
@@ -714,7 +755,7 @@ logger.LogInformation(
 
             IGameStartupCoordinator startupCoordinator =
                 serviceProvider.GetRequiredService<IGameStartupCoordinator>();
-                
+
             logger.LogInformation(
                 "Production DI graph initialized successfully.");
 
@@ -771,7 +812,7 @@ logger.LogInformation(
                     target.Bounds.Width > 0 &&
                     target.Bounds.Height > 0)
                 .ToArray();
-    
+
 
             if (taskTargets.Length != 1)
             {
@@ -1059,6 +1100,8 @@ logger.LogInformation(
         }
 
 #endif
+
+        return 0;
     }
     /// <summary>
     /// Runs a region-based OCR observation using the already initialized service provider.

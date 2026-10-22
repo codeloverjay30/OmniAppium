@@ -190,8 +190,8 @@ namespace OmniAppium.EngineUtilityServices.Services.Click
             // Temporary diagnostic implementation.
             // Use a known safe coordinate through the existing click path.
             Click(
-                rx: 540,
-                ry: 960,
+                rx: 584,
+                ry: 884,
                 usePreloadScreenSize: true);
 
             _logger.LogInformation(
