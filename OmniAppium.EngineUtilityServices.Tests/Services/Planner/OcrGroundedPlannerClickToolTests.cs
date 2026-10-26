@@ -56,6 +56,7 @@ public sealed class OcrGroundedPlannerClickToolTests
         Func<Task> act = () => sut.Click(targetId);
 
         await act.Should().NotThrowAsync();
+        state.VerifyGet(x => x.Current, Times.Once);
         provider.Verify(x => x.GetApprovedRequestAsync(snapshot, targetId, It.IsAny<CancellationToken>()), Times.Once);
         trustedClick.Verify(x => x.ClickAsync(approved, It.IsAny<CancellationToken>()), Times.Once);
         state.VerifyNoOtherCalls();
@@ -98,6 +99,7 @@ public sealed class OcrGroundedPlannerClickToolTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Trusted review approval is required*");
+        state.VerifyGet(x => x.Current, Times.Once);
         provider.Verify(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()), Times.Once);
         state.VerifyNoOtherCalls();
         provider.VerifyNoOtherCalls();
@@ -125,6 +127,7 @@ public sealed class OcrGroundedPlannerClickToolTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*does not match the current planner action*");
         provider.Verify(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()), Times.Once);
+        state.VerifyGet(x => x.Current, Times.Once);
         state.VerifyNoOtherCalls();
         provider.VerifyNoOtherCalls();
         trustedClick.VerifyNoOtherCalls();
@@ -148,6 +151,15 @@ public sealed class OcrGroundedPlannerClickToolTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Trusted click failed*");
+        
+        state.VerifyGet(x => x.Current, Times.Once);
+
+        provider.Verify(
+            x => x.GetApprovedRequestAsync(
+                snapshot,
+                "ocr-0",
+                It.IsAny<CancellationToken>()),
+            Times.Once);
         provider.VerifyNoOtherCalls();
         trustedClick.Verify(x => x.ClickAsync(approved, It.IsAny<CancellationToken>()), Times.Once);
         trustedClick.VerifyNoOtherCalls();

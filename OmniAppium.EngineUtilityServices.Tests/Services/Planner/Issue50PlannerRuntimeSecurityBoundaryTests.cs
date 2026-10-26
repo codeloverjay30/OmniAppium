@@ -43,6 +43,7 @@ public sealed class Issue50PlannerRuntimeSecurityBoundaryTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Trusted review approval is required*");
+        state.VerifyGet(x => x.Current, Times.Once);
         provider.Verify(x => x.GetApprovedRequestAsync(snapshot, "ocr-missing", It.IsAny<CancellationToken>()), Times.Once);
         state.VerifyNoOtherCalls();
         provider.VerifyNoOtherCalls();
@@ -64,6 +65,7 @@ public sealed class Issue50PlannerRuntimeSecurityBoundaryTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*snapshot is stale*");
+        state.VerifyGet(x => x.Current, Times.Once);
         provider.Verify(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()), Times.Once);
         state.VerifyNoOtherCalls();
         provider.VerifyNoOtherCalls();
