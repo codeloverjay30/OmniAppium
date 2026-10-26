@@ -11,6 +11,30 @@ namespace OmniAppium.EngineUtilityServices.Tests.Services.AiSecurity;
 public sealed class GeminiClickToolRegistryIntegrationTests
 {
     [Fact]
+    public void Protected_WithoutTrustedPlannerConfiguration_ShouldNotRegisterAnyClickTool()
+    {
+        var registry = new Mock<IGeminiToolRegistry>(MockBehavior.Strict);
+
+        Action act = () => registry.Object.RegisterAiClickTools(
+            AiClickExecutionMode.Protected,
+            isProduction: true,
+            () => throw new InvalidOperationException("Direct click factory must not be invoked."),
+            () => throw new InvalidOperationException("Protected click factory must not be invoked."),
+            isTrustedPlannerConfigured: false);
+
+        act.Should().NotThrow();
+        registry.Verify(
+            x => x.Register<OcrGroundedPlannerClickTool>(
+                It.IsAny<Func<OcrGroundedPlannerClickTool>>()),
+            Times.Never);
+        registry.Verify(
+            x => x.Register<ClickService>(
+                It.IsAny<Func<ClickService>>()),
+            Times.Never);
+        registry.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public void Protected_RegistersPlannerOnly()
     {
         var registry = new Mock<IGeminiToolRegistry>(MockBehavior.Loose);
