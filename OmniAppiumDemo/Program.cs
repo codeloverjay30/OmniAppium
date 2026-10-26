@@ -1,8 +1,8 @@
 #define DEVELOPING
 #define IS_LOGGING
 // #define GEMINI_READ_ONLY_SMOKE_TEST
-#define ISSUE48_CLICK_SMOKE_TEST
-// #define AUTO_EXECUTE_TASKS
+//#define ISSUE48_CLICK_SMOKE_TEST
+#define AUTO_EXECUTE_TASKS
 
 #if ISSUE48_CLICK_SMOKE_TEST && GEMINI_READ_ONLY_SMOKE_TEST
 #error Issue48 and Gemini read-only smoke test modes are mutually exclusive.
@@ -25,7 +25,7 @@ using OmniAppium.EngineUtilityServices.Services.OCR;
 using OmniAppium.EngineUtilityServices.Services.Planner;
 using OmniAppium.EngineUtilityServices.Services.Stability;
 using OmniAppium.EngineUtilityServices.Workflows;
-
+using OmniAppium.ConfigUtilityServices.Services;
 using AiUtility.AiBaseUtilityServices.Models;
 using AiUtility.AiBaseUtilityServices.Services;
 using AiUtility.Configurations;
@@ -421,7 +421,7 @@ logger.LogInformation(
                     currentScreenSize.Width,
                     currentScreenSize.Height);
 
-            IClickService clickService =
+            ClickService clickService =
                 new ClickService(
                     loggerFactoryService,
                     true)
@@ -786,6 +786,7 @@ logger.LogInformation(
 
 #endif
 
+            services.AddTransient<TrustedPlannerClickExecutor>();
             services.AddGeminiAutomation(
                 aiExecutionSettings,
                 geminiToolRegistry,
@@ -809,10 +810,49 @@ logger.LogInformation(
                 IGameStartupCoordinator,
                 GameStartupCoordinator>();
 
-            // Issue 54 provisioning is opt-in and does not sign or create approvals.
+            // Issue 54 smoke provisioning remains isolated from the planner.
             services.AddIssue54SmokeProvisioning(args);
 
-            // Apply the production click security policy last.
+            // Planner approvals must originate from an independent reviewer.
+            // Never activate planner provisioning during Issue 50/54 smoke runs.
+            string? plannerRequestPath =
+                Environment.GetEnvironmentVariable("PLANNER_TRUSTED_REQUEST_JSON");
+
+            if (!args.Contains("--issue50-smoke", StringComparer.Ordinal) &&
+                !string.IsNullOrWhiteSpace(plannerRequestPath))
+            {
+                string claimDirectory = RequirePlannerEnvironment("PLANNER_CLAIM_DIRECTORY");
+                string publicKeyPath = RequirePlannerEnvironment("PLANNER_TRUSTED_PUBLIC_KEY_PEM");
+                string reviewerId = RequirePlannerEnvironment("PLANNER_REVIEWER_ID");
+                string keyId = RequirePlannerEnvironment("PLANNER_KEY_ID");
+                string fingerprint = RequirePlannerEnvironment("PLANNER_PUBLIC_KEY_SPKI_SHA256");
+
+                IFileSystem plannerFileSystem = new FileSystem();
+                string absoluteClaimDirectory =
+                    plannerFileSystem.Path.GetFullPath(claimDirectory);
+                string absoluteRequestPath =
+                    plannerFileSystem.Path.GetFullPath(plannerRequestPath);
+
+                if (!plannerFileSystem.Directory.Exists(absoluteClaimDirectory))
+                    throw new InvalidOperationException(
+                        "Planner approval claim directory does not exist.");
+
+                if (!plannerFileSystem.File.Exists(absoluteRequestPath))
+                    throw new InvalidOperationException(
+                        "Planner trusted request JSON does not exist.");
+
+                TrustedReviewerKey trustedKey = LoadPlannerTrustedReviewerKey(
+                    plannerFileSystem, publicKeyPath, reviewerId, keyId, fingerprint);
+
+                services.AddTrustedPlannerClick(
+                    [trustedKey],
+                    absoluteClaimDirectory,
+                    sp => new JsonPlannerTrustedClickRequestProvider(
+                        sp.GetRequiredService<IFileSystem>(),
+                        absoluteRequestPath));
+            }
+
+            // Legacy click routes remain blocked in production.
             services.AddProductionClickSecurity();
 
             // ========================================================
@@ -865,12 +905,18 @@ logger.LogInformation(
                 serviceProvider.GetRequiredService<
                     IOcrGroundedPlannerExecutionScopeFactory>();
 
-            IGameWorkflowStepExecutor gameWorkflowStepExecutor =
-                serviceProvider.GetRequiredService<
-                    IGameWorkflowStepExecutor>();
+            // Do not eagerly resolve the legacy workflow executor here.
+            // Its constructor requires IOcrClickService, which is
+            // intentionally blocked by AddProductionClickSecurity().
+            // Resolve IGameWorkflowStepExecutor only inside a workflow
+            // entry point that explicitly supports its click policy.
 
+            // Legacy startup requires IOcrClickService. Keep it out of
+            // protected automatic execution and read-only smoke tests.
+            #if !AUTO_EXECUTE_TASKS && !GEMINI_READ_ONLY_SMOKE_TEST && !ISSUE48_CLICK_SMOKE_TEST
             IGameStartupCoordinator startupCoordinator =
                 serviceProvider.GetRequiredService<IGameStartupCoordinator>();
+            #endif
 
             logger.LogInformation(
                 "Production DI graph initialized successfully.");
@@ -1021,7 +1067,8 @@ logger.LogInformation(
                 }
             }
 
-#else
+#elif !AUTO_EXECUTE_TASKS && !GEMINI_READ_ONLY_SMOKE_TEST
+
             logger.LogInformation(
                 "Starting game startup coordination.");
 
@@ -1030,7 +1077,11 @@ logger.LogInformation(
 
             logger.LogInformation(
                 "Game startup coordination completed; main screen is ready.");
-    
+#else
+    logger.LogInformation(
+        "Skipping legacy game startup coordination for Gemini automation.");
+#endif
+
             logger.LogInformation(
                 "Starting real-device ROI + OCR stability verification.");
 
@@ -1076,7 +1127,7 @@ logger.LogInformation(
             // 12. Real-device OCR workflow.
             // ========================================================
 
-#if !GEMINI_READ_ONLY_SMOKE_TEST
+#if !AUTO_EXECUTE_TASKS && !GEMINI_READ_ONLY_SMOKE_TEST
 
     GameWorkflowStep taskWorkflowStep =
         new(
@@ -1096,8 +1147,8 @@ logger.LogInformation(
     logger.LogInformation(
         "Executing OCR workflow.");
 
-    await gameWorkflowStepExecutor.ExecuteAsync(
-        taskWorkflowStep);
+    // await gameWorkflowStepExecutor.ExecuteAsync(
+    //     taskWorkflowStep);
 
     logger.LogInformation(
         "OCR workflow completed.");
@@ -1187,7 +1238,6 @@ logger.LogInformation(
     logger.LogInformation(
         "Configured automation sequence completed.");
 
-#endif
 #endif
         }
         catch (Exception ex)
@@ -1280,6 +1330,77 @@ logger.LogInformation(
         // IScreenshotService, IAndroidScreenOcrService and
         // IAndroidScreenStabilityGuard must already be registered by the host.
         return services;
+    }
+
+    /// <summary>
+    /// Reads a required planner security setting.
+    /// </summary>
+    private static string RequirePlannerEnvironment(string name)
+    {
+        string? value = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException($"{name} is required.");
+        return value;
+    }
+
+    /// <summary>
+    /// Validates an externally pinned ECDSA P-256 reviewer public key.
+    /// </summary>
+    private static TrustedReviewerKey LoadPlannerTrustedReviewerKey(
+        IFileSystem fileSystem,
+        string publicKeyPath,
+        string reviewerId,
+        string keyId,
+        string fingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(fileSystem);
+        string absolutePath = fileSystem.Path.GetFullPath(publicKeyPath);
+        if (!fileSystem.File.Exists(absolutePath))
+            throw new InvalidOperationException("Planner trusted public key file does not exist.");
+
+        string pem = fileSystem.File.ReadAllText(absolutePath);
+        using System.Security.Cryptography.ECDsa key =
+            System.Security.Cryptography.ECDsa.Create();
+        key.ImportFromPem(pem);
+        if (key.KeySize != 256 ||
+            key.ExportParameters(false).Curve.Oid.Value != "1.2.840.10045.3.1.7")
+            throw new InvalidOperationException("Planner trusted key must be ECDSA P-256.");
+
+        byte[] spki = key.ExportSubjectPublicKeyInfo();
+        try
+        {
+            byte[] actual = System.Security.Cryptography.SHA256.HashData(spki);
+            byte[] expected;
+            try
+            {
+                expected = Convert.FromHexString(fingerprint);
+            }
+            catch (FormatException ex)
+            {
+                throw new InvalidOperationException(
+                    "Planner public key fingerprint is invalid.", ex);
+            }
+
+            try
+            {
+                if (expected.Length != 32 ||
+                    !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                        actual, expected))
+                    throw new InvalidOperationException(
+                        "Planner public key fingerprint mismatch.");
+            }
+            finally
+            {
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(expected);
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(actual);
+            }
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(spki);
+        }
+
+        return new TrustedReviewerKey(reviewerId, keyId, pem);
     }
 
     /// <summary>

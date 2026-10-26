@@ -1,52 +1,12 @@
 {
-    "Jobs": [
-        {
-            "Type": "Wait",
-            "Timeout": 30000
-        },
-        {
-            "Type": "Click",
-
-            // Position is based on the development/reference resolution.
-            // It will NOT be transformed to the current device resolution.
-            "CoordinateMode": "Absolute",
-
-
-            "Position": {
-                "X": 1167,
-                "Y": 740
-            },
-            "Timeout": 5000
-        },
-        {
-            "Type": "Click",
-
-            // Position is based on the development/reference resolution.
-            // It will NOT be transformed to the current device resolution.
-            "CoordinateMode": "Absolute",
-
-            "Position": {
-                "X": 500,
-                "Y": 1000
-            },
-            "Timeout": 1000
-        },
-
-        {
-            "Type": "Gemini",
-
-            "JobName": "CompleteDailyActivities",
-
-            "Description":
-                "Complete daily activities and claim eligible free rewards.",
-
-            "UserTask":
-                "完成每天活動並領取所有免費獎勵",
-
-            "Prompt":
-                "幫我完成每天活動並領取所有免費獎勵。請根據目前遊戲畫面自行判斷活動入口、通知紅點、Tab 與可領取項目。不要執行任何充值、購買、付款或需要真實貨幣的操作。若畫面、標題、按鈕或項目包含 NT 金額、首儲、累儲、充值、付款、購買等資訊，視為敏感操作，不得執行。",
-
-            "Timeout": 120000
-        }
-    ]
+  "Jobs": [
+    {
+      "Type": "Gemini",
+      "JobName": "StatefulExplorationSmoke",
+      "Description": "Validate cross-screen observation, visited-tab memory, back navigation, and termination.",
+      "UserTask": "從遊戲主畫面進入「超值活動」，選擇「黃天當立」Tab，返回活動頁，然後選擇另一個尚未訪問的 Tab，確認後結束。",
+      "Prompt": "這是受控的多步驟探索驗證，不是獎勵領取任務。請依序：(1) 在目前畫面找到「超值活動」並進入；(2) 找到並開啟「黃天當立」Tab；(3) 返回上一層活動頁面；(4) 選擇一個不同於「黃天當立」、且本次任務尚未訪問的 Tab；(5) 確認進入該 Tab 後停止。每一步只能根據當下最新畫面證據決定目標；如果沒有最新畫面、目標不明確、無法返回或無法確認成功，立即停止並回報原因，不要猜測座標。禁止充值、購買、付款、領獎或其他非導航操作。禁止重複進入已訪問的 Tab。最多嘗試 8 次導航操作；完成後列出訪問順序及每一步的畫面驗證依據。若現有工具無法取得最新畫面，請明確回報能力不足，勿宣稱任務完成。",
+      "Timeout": 120000
+    }
+  ]
 }

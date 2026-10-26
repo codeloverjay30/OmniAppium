@@ -4,61 +4,33 @@ using AiUtility.ToolKits.Abstractions;
 namespace OmniAppium.EngineUtilityServices.Services.Planner;
 
 /// <summary>
-/// Exposes OCR-grounded click execution to an AI planner.
+/// Exposes only trusted OCR-grounded clicks to the Gemini planner.
 /// </summary>
 public sealed class OcrGroundedPlannerClickTool
 {
-    private readonly IAiToolExecutionStateAccessor<
-        OcrGroundedPlannerExecutionState> _executionStateAccessor;
-
-    private readonly IOcrGroundedPlannerActionExecutor _actionExecutor;
+    private readonly IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState> _state;
+    private readonly TrustedPlannerClickExecutor _executor;
 
     /// <summary>
-    /// Initializes a new instance of the
-    /// <see cref="OcrGroundedPlannerClickTool"/> class.
+    /// Initializes the planner tool with its scoped state and trusted executor.
     /// </summary>
-    /// <param name="executionStateAccessor">
-    /// Provides the state owned by the current logical AI tool execution.
-    /// </param>
-    /// <param name="actionExecutor">
-    /// Executes OCR-grounded planner actions.
-    /// </param>
     public OcrGroundedPlannerClickTool(
-        IAiToolExecutionStateAccessor<
-            OcrGroundedPlannerExecutionState> executionStateAccessor,
-        IOcrGroundedPlannerActionExecutor actionExecutor)
+        IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState> state,
+        TrustedPlannerClickExecutor executor)
     {
-        ArgumentNullException.ThrowIfNull(
-            executionStateAccessor);
-
-        ArgumentNullException.ThrowIfNull(
-            actionExecutor);
-
-        _executionStateAccessor =
-            executionStateAccessor;
-
-        _actionExecutor =
-            actionExecutor;
+        _state = state ?? throw new ArgumentNullException(nameof(state));
+        _executor = executor ?? throw new ArgumentNullException(nameof(executor));
     }
 
     /// <summary>
-    /// Clicks the OCR-grounded target selected by the planner against the
-    /// exact snapshot owned by the current logical execution.
+    /// Executes the current planner target using independently signed approval.
     /// </summary>
-    /// <param name="targetId">
-    /// The exact OCR-grounded target identifier selected by the planner.
-    /// </param>
-    [GeminiTool(
-        Description =
-            "Clicks an OCR-grounded target from the current planner snapshot.")]
-    public void Click(
-        string targetId)
+    [GeminiTool(Description = "Clicks an OCR-grounded target from the current planner snapshot.")]
+    public Task Click(string targetId, CancellationToken cancellationToken = default)
     {
-        OcrGroundedPlannerExecutionState executionState =
-            _executionStateAccessor.Current;
-
-        _actionExecutor.Click(
-            executionState.Snapshot,
-            targetId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
+        cancellationToken.ThrowIfCancellationRequested();
+        OcrGroundedPlannerExecutionState state = _state.Current;
+        return _executor.ClickAsync(state.Snapshot, targetId, cancellationToken);
     }
 }
