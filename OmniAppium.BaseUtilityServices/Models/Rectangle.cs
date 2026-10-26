@@ -2,7 +2,13 @@ using System.ComponentModel;
 using CustomDataAnnotations.Maintenance;
 namespace OmniAppium.ConfigUtilityServices.Models
 {
- 
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    [Obsolete(
+    "Use CoordinateUtilityServices.Rectangle instead. " +
+    "This type is retained for legacy configuration compatibility.")]
+    [TechnicalDebt(
+    CategoryType.ObsoleteApi,
+    "Use CoordinateUtilityServices.Rectangle instead.")]
     public class Rectangle
     {
         /// <summary>
