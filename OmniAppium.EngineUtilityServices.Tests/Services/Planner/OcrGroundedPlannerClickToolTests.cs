@@ -8,371 +8,208 @@ namespace OmniAppium.EngineUtilityServices.Tests.Services.Planner;
 
 public sealed class OcrGroundedPlannerClickToolTests
 {
-    private readonly Mock<
-        IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>>
-        _executionStateAccessorMock;
-
-    private readonly Mock<IOcrGroundedPlannerActionExecutor>
-        _actionExecutorMock;
-
-    public OcrGroundedPlannerClickToolTests()
-    {
-        _executionStateAccessorMock =
-            new Mock<
-                IAiToolExecutionStateAccessor<
-                    OcrGroundedPlannerExecutionState>>(
-                MockBehavior.Strict);
-
-        _actionExecutorMock =
-            new Mock<IOcrGroundedPlannerActionExecutor>(
-                MockBehavior.Strict);
-    }
-
     [Fact]
-    public void Click_WhenExecutionStateIsActive_ShouldDelegateExactSnapshotAndTargetId()
+    public async Task Click_WhenApproved_ShouldPassExactSnapshotAndTargetIdToTrustedBoundary()
     {
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot("snapshot-A");
-
-        OcrGroundedPlannerExecutionState executionState =
-            new(snapshot);
-
+        OcrGroundedSnapshot snapshot = CreateSnapshot("snapshot-A");
         const string targetId = "ocr-0";
+        TrustedGroundedClickRequest approved = CreateApprovedRequest(snapshot, targetId);
+        var state = ActiveState(snapshot);
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        provider.Setup(x => x.GetApprovedRequestAsync(
+                It.Is<OcrGroundedSnapshot>(s => ReferenceEquals(s, snapshot)),
+                targetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(approved);
+        trustedClick.Setup(x => x.ClickAsync(
+                It.Is<TrustedGroundedClickRequest>(r => ReferenceEquals(r, approved)),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
-        _executionStateAccessorMock
-            .SetupGet(accessor => accessor.Current)
-            .Returns(executionState);
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
+        Func<Task> act = () => sut.Click(targetId);
 
-        _actionExecutorMock
-            .Setup(
-                executor =>
-                    executor.Click(
-                        It.Is<OcrGroundedSnapshot>(
-                            actual =>
-                                ReferenceEquals(
-                                    actual,
-                                    snapshot)),
-                        targetId));
-
-        OcrGroundedPlannerClickTool sut =
-            CreateSut();
-
-        Action act =
-            () => sut.Click(targetId);
-
-        act.Should()
-            .NotThrow();
-
-        _executionStateAccessorMock.VerifyGet(
-            accessor => accessor.Current,
-            Times.Once);
-
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    It.Is<OcrGroundedSnapshot>(
-                        actual =>
-                            ReferenceEquals(
-                                actual,
-                                snapshot)),
-                    targetId),
-            Times.Once);
-
-        _executionStateAccessorMock.VerifyNoOtherCalls();
-        _actionExecutorMock.VerifyNoOtherCalls();
+        await act.Should().NotThrowAsync();
+        state.VerifyGet(x => x.Current, Times.Once);
+        provider.Verify(x => x.GetApprovedRequestAsync(snapshot, targetId, It.IsAny<CancellationToken>()), Times.Once);
+        trustedClick.Verify(x => x.ClickAsync(approved, It.IsAny<CancellationToken>()), Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenTargetIdContainsWhitespace_ShouldPreserveTargetIdExactly()
+    public async Task Click_WhenTargetIdContainsWhitespace_ShouldPreserveTargetIdExactly()
     {
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot("snapshot-A");
-
-        OcrGroundedPlannerExecutionState executionState =
-            new(snapshot);
-
+        OcrGroundedSnapshot snapshot = CreateSnapshot("snapshot-A");
         const string targetId = "  ocr-0  ";
+        TrustedGroundedClickRequest approved = CreateApprovedRequest(snapshot, targetId);
+        var state = ActiveState(snapshot);
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        provider.Setup(x => x.GetApprovedRequestAsync(snapshot, targetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(approved);
+        trustedClick.Setup(x => x.ClickAsync(approved, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
-        _executionStateAccessorMock
-            .SetupGet(accessor => accessor.Current)
-            .Returns(executionState);
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
+        Func<Task> act = () => sut.Click(targetId);
 
-        _actionExecutorMock
-            .Setup(
-                executor =>
-                    executor.Click(
-                        snapshot,
-                        targetId));
-
-        OcrGroundedPlannerClickTool sut =
-            CreateSut();
-
-        Action act =
-            () => sut.Click(targetId);
-
-        act.Should()
-            .NotThrow();
-
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    snapshot,
-                    targetId),
-            Times.Once);
-
-        _executionStateAccessorMock.VerifyGet(
-            accessor => accessor.Current,
-            Times.Once);
-
-        _executionStateAccessorMock.VerifyNoOtherCalls();
-        _actionExecutorMock.VerifyNoOtherCalls();
+        await act.Should().NotThrowAsync();
+        provider.Verify(x => x.GetApprovedRequestAsync(snapshot, targetId, It.IsAny<CancellationToken>()), Times.Once);
+        trustedClick.Verify(x => x.ClickAsync(approved, It.IsAny<CancellationToken>()), Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenExecutionStateIsMissing_ShouldPropagateStateAccessorFailure()
+    public async Task Click_WhenExecutionStateIsMissing_ShouldNeverRequestApprovalOrClick()
     {
-        const string targetId = "ocr-0";
+        var state = new Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>>(MockBehavior.Strict);
+        state.SetupGet(x => x.Current)
+            .Throws(new InvalidOperationException("No active AI tool execution state is available."));
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
 
-        _executionStateAccessorMock
-            .SetupGet(accessor => accessor.Current)
-            .Throws(
-                new InvalidOperationException(
-                    "No active AI tool execution state is available."));
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
+        Func<Task> act = () => sut.Click("ocr-0");
 
-        OcrGroundedPlannerClickTool sut =
-            CreateSut();
-
-        Action act =
-            () => sut.Click(targetId);
-
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage(
-                "*No active AI tool execution state is available*");
-
-        _executionStateAccessorMock.VerifyGet(
-            accessor => accessor.Current,
-            Times.Once);
-
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    It.IsAny<OcrGroundedSnapshot>(),
-                    It.IsAny<string>()),
-            Times.Never);
-
-        _executionStateAccessorMock.VerifyNoOtherCalls();
-        _actionExecutorMock.VerifyNoOtherCalls();
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*No active AI tool execution state is available*");
+        state.VerifyGet(x => x.Current, Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenActionExecutorFails_ShouldPropagateOriginalFailure()
+    public async Task Click_WhenApprovalIsMissing_ShouldNeverClick()
     {
-        OcrGroundedSnapshot snapshot =
-            CreateSnapshot("snapshot-A");
+        OcrGroundedSnapshot snapshot = CreateSnapshot("snapshot-A");
+        var state = ActiveState(snapshot);
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        provider.Setup(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TrustedGroundedClickRequest)null!);
 
-        OcrGroundedPlannerExecutionState executionState =
-            new(snapshot);
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
+        Func<Task> act = () => sut.Click("ocr-0");
 
-        const string targetId = "ocr-0";
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Trusted review approval is required*");
+        provider.Verify(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()), Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
+    }
 
-        _executionStateAccessorMock
-            .SetupGet(accessor => accessor.Current)
-            .Returns(executionState);
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Click_WhenApprovalDoesNotMatchCurrentAction_ShouldNeverClick(bool mismatchSnapshot)
+    {
+        OcrGroundedSnapshot snapshot = CreateSnapshot("snapshot-A");
+        TrustedGroundedClickRequest approved = CreateApprovedRequest(
+            mismatchSnapshot ? CreateSnapshot("snapshot-A") : snapshot,
+            mismatchSnapshot ? "ocr-0" : "ocr-other");
+        var state = ActiveState(snapshot);
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        provider.Setup(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(approved);
 
-        _actionExecutorMock
-            .Setup(
-                executor =>
-                    executor.Click(
-                        snapshot,
-                        targetId))
-            .Throws(
-                new InvalidOperationException(
-                    "Planner grounded click failed."));
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
+        Func<Task> act = () => sut.Click("ocr-0");
 
-        OcrGroundedPlannerClickTool sut =
-            CreateSut();
-
-        Action act =
-            () => sut.Click(targetId);
-
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage(
-                "*Planner grounded click failed*");
-
-        _executionStateAccessorMock.VerifyGet(
-            accessor => accessor.Current,
-            Times.Once);
-    
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    snapshot,
-                    targetId),
-            Times.Once);
-
-        _executionStateAccessorMock.VerifyNoOtherCalls();
-        _actionExecutorMock.VerifyNoOtherCalls();
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*does not match the current planner action*");
+        provider.Verify(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()), Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenInvokedTwice_ShouldResolveExecutionStateForEachInvocation()
+    public async Task Click_WhenTrustedClickFails_ShouldPropagateOriginalFailure()
     {
-        OcrGroundedSnapshot firstSnapshot =
-            CreateSnapshot("snapshot-A");
+        OcrGroundedSnapshot snapshot = CreateSnapshot("snapshot-A");
+        TrustedGroundedClickRequest approved = CreateApprovedRequest(snapshot, "ocr-0");
+        var state = ActiveState(snapshot);
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        provider.Setup(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(approved);
+        trustedClick.Setup(x => x.ClickAsync(approved, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Trusted click failed."));
 
-        OcrGroundedSnapshot secondSnapshot =
-            CreateSnapshot("snapshot-B");
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
+        Func<Task> act = () => sut.Click("ocr-0");
 
-        OcrGroundedPlannerExecutionState firstState =
-            new(firstSnapshot);
-
-        OcrGroundedPlannerExecutionState secondState =
-            new(secondSnapshot);
-
-        const string firstTargetId = "ocr-0";
-        const string secondTargetId = "ocr-1";
-
-        _executionStateAccessorMock
-            .SetupSequence(
-                accessor => accessor.Current)
-            .Returns(firstState)
-            .Returns(secondState);
-
-        _actionExecutorMock
-            .Setup(
-                executor =>
-                    executor.Click(
-                        firstSnapshot,
-                        firstTargetId));
-
-        _actionExecutorMock
-            .Setup(
-                executor =>
-                    executor.Click(
-                        secondSnapshot,
-                        secondTargetId));
-
-        OcrGroundedPlannerClickTool sut =
-            CreateSut();
-
-        sut.Click(firstTargetId);
-        sut.Click(secondTargetId);
-
-        _executionStateAccessorMock.VerifyGet(
-            accessor => accessor.Current,
-            Times.Exactly(2));
-
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    firstSnapshot,
-                    firstTargetId),
-            Times.Once);
-
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    secondSnapshot,
-                    secondTargetId),
-            Times.Once);
-
-        _executionStateAccessorMock.VerifyNoOtherCalls();
-        _actionExecutorMock.VerifyNoOtherCalls();
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Trusted click failed*");
+        provider.VerifyNoOtherCalls();
+        trustedClick.Verify(x => x.ClickAsync(approved, It.IsAny<CancellationToken>()), Times.Once);
+        trustedClick.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenExecutionStateChanges_ShouldNotReusePreviousSnapshot()
+    public async Task Click_WhenInvokedTwice_ShouldResolveStateAndApprovalForEachInvocation()
     {
-        OcrGroundedSnapshot firstSnapshot =
-            CreateSnapshot("snapshot-A");
+        OcrGroundedSnapshot first = CreateSnapshot("snapshot-A");
+        OcrGroundedSnapshot second = CreateSnapshot("snapshot-B");
+        TrustedGroundedClickRequest firstRequest = CreateApprovedRequest(first, "ocr-0");
+        TrustedGroundedClickRequest secondRequest = CreateApprovedRequest(second, "ocr-1");
+        var state = new Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>>(MockBehavior.Strict);
+        state.SetupSequence(x => x.Current)
+            .Returns(new OcrGroundedPlannerExecutionState(first))
+            .Returns(new OcrGroundedPlannerExecutionState(second));
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        provider.Setup(x => x.GetApprovedRequestAsync(first, "ocr-0", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(firstRequest);
+        provider.Setup(x => x.GetApprovedRequestAsync(second, "ocr-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(secondRequest);
+        trustedClick.Setup(x => x.ClickAsync(firstRequest, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        trustedClick.Setup(x => x.ClickAsync(secondRequest, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
-        OcrGroundedSnapshot secondSnapshot =
-            CreateSnapshot("snapshot-B");
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
+        await sut.Click("ocr-0");
+        await sut.Click("ocr-1");
 
-        OcrGroundedPlannerExecutionState firstState =
-            new(firstSnapshot);
-
-        OcrGroundedPlannerExecutionState secondState =
-            new(secondSnapshot);
-
-        const string targetId = "ocr-0";
-
-        _executionStateAccessorMock
-            .SetupSequence(
-                accessor => accessor.Current)
-            .Returns(firstState)
-            .Returns(secondState);
-
-        _actionExecutorMock
-            .Setup(
-                executor =>
-                    executor.Click(
-                        firstSnapshot,
-                        targetId));
-
-        _actionExecutorMock
-            .Setup(
-                executor =>
-                    executor.Click(
-                        secondSnapshot,
-                        targetId));
-
-        OcrGroundedPlannerClickTool sut =
-            CreateSut();
-
-        sut.Click(targetId);
-        sut.Click(targetId);
-
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    firstSnapshot,
-                    targetId),
-            Times.Once);
-
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    secondSnapshot,
-                    targetId),
-            Times.Once);
-
-        _actionExecutorMock.Verify(
-            executor =>
-                executor.Click(
-                    It.Is<OcrGroundedSnapshot>(
-                        actual =>
-                            !ReferenceEquals(
-                                actual,
-                                firstSnapshot) &&
-                            !ReferenceEquals(
-                                actual,
-                                secondSnapshot)),
-                    It.IsAny<string>()),
-            Times.Never);
-
-        _executionStateAccessorMock.VerifyGet(
-            accessor => accessor.Current,
-            Times.Exactly(2));
-    
-        _executionStateAccessorMock.VerifyNoOtherCalls();
-        _actionExecutorMock.VerifyNoOtherCalls();
+        state.VerifyGet(x => x.Current, Times.Exactly(2));
+        provider.Verify(x => x.GetApprovedRequestAsync(first, "ocr-0", It.IsAny<CancellationToken>()), Times.Once);
+        provider.Verify(x => x.GetApprovedRequestAsync(second, "ocr-1", It.IsAny<CancellationToken>()), Times.Once);
+        trustedClick.Verify(x => x.ClickAsync(firstRequest, It.IsAny<CancellationToken>()), Times.Once);
+        trustedClick.Verify(x => x.ClickAsync(secondRequest, It.IsAny<CancellationToken>()), Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
     }
 
-    private OcrGroundedPlannerClickTool CreateSut()
+    private static OcrGroundedPlannerClickTool CreateTool(
+        Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>> state,
+        Mock<IPlannerTrustedClickRequestProvider> provider,
+        Mock<ITrustedGroundedClickService> trustedClick) =>
+        new(state.Object, new TrustedPlannerClickExecutor(provider.Object, trustedClick.Object));
+
+    private static Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>> ActiveState(
+        OcrGroundedSnapshot snapshot)
     {
-        return new OcrGroundedPlannerClickTool(
-            _executionStateAccessorMock.Object,
-            _actionExecutorMock.Object);
+        var state = new Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>>(MockBehavior.Strict);
+        state.SetupGet(x => x.Current).Returns(new OcrGroundedPlannerExecutionState(snapshot));
+        return state;
     }
 
-    private static OcrGroundedSnapshot CreateSnapshot(
-        string snapshotId)
-    {
-        return new OcrGroundedSnapshot(
-            snapshotId,
-            Array.Empty<OcrGroundedTarget>());
-    }
+    private static OcrGroundedSnapshot CreateSnapshot(string id) =>
+        new(id, Array.Empty<OcrGroundedTarget>());
+
+    // The approval is an opaque test fixture. The trusted device service is strictly mocked,
+    // so no unverified evidence is ever sent to a production authorization boundary.
+    private static TrustedGroundedClickRequest CreateApprovedRequest(
+        OcrGroundedSnapshot snapshot, string targetId) =>
+        new(snapshot, targetId, null!, "review", "annotation", "screenshot",
+            "review-sha", "annotation-sha", "screenshot-sha", 1f);
 }

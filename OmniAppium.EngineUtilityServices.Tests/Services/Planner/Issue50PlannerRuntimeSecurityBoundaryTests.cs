@@ -1,8 +1,6 @@
 using AiUtility.ToolKits.Abstractions;
-using CoordinateUtilityServices;
 using FluentAssertions;
 using Moq;
-using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.Grounding;
 using OmniAppium.EngineUtilityServices.Services.Planner;
 
@@ -11,65 +9,75 @@ namespace OmniAppium.EngineUtilityServices.Tests.Services.Planner;
 public sealed class Issue50PlannerRuntimeSecurityBoundaryTests
 {
     [Fact]
-    public void Click_WhenPlannerScopeIsMissing_ShouldNeverTouchDevice()
+    public async Task Click_WhenPlannerScopeIsMissing_ShouldNeverRequestApprovalOrTouchDevice()
     {
         var state = new Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>>(MockBehavior.Strict);
-        var click = new Mock<IClickService>(MockBehavior.Strict);
-        var freshness = new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
         state.SetupGet(x => x.Current)
             .Throws(new InvalidOperationException("No active AI tool execution state is available."));
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
 
-        OcrGroundedPlannerClickTool sut = CreateTool(state, click, freshness);
-        Action act = () => sut.Click("ocr-0");
+        Func<Task> act = () => sut.Click("ocr-0");
 
-        act.Should().Throw<InvalidOperationException>()
+        await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*No active AI tool execution state is available*");
-        click.Verify(x => x.ClickAbsolute(It.IsAny<double>(), It.IsAny<double>()), Times.Never);
-        click.VerifyNoOtherCalls();
-        freshness.VerifyNoOtherCalls();
+        state.VerifyGet(x => x.Current, Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenTargetIsNotInSnapshot_ShouldNeverTouchDevice()
+    public async Task Click_WhenTargetIsNotApproved_ShouldNeverTouchDevice()
     {
         OcrGroundedSnapshot snapshot = CreateSnapshot();
-        var state = CreateActiveState(snapshot);
-        var click = new Mock<IClickService>(MockBehavior.Strict);
-        var freshness = new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
+        var state = ActiveState(snapshot);
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        provider.Setup(x => x.GetApprovedRequestAsync(snapshot, "ocr-missing", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TrustedGroundedClickRequest)null!);
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
 
-        OcrGroundedPlannerClickTool sut = CreateTool(state, click, freshness);
-        Action act = () => sut.Click("ocr-missing");
+        Func<Task> act = () => sut.Click("ocr-missing");
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*OCR-grounded target 'ocr-missing' was not found*");
-        click.Verify(x => x.ClickAbsolute(It.IsAny<double>(), It.IsAny<double>()), Times.Never);
-        click.VerifyNoOtherCalls();
-        freshness.VerifyNoOtherCalls();
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Trusted review approval is required*");
+        provider.Verify(x => x.GetApprovedRequestAsync(snapshot, "ocr-missing", It.IsAny<CancellationToken>()), Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void Click_WhenSnapshotIsStale_ShouldNeverTouchDeviceOrAuthorize()
+    public async Task Click_WhenSnapshotIsStale_ShouldNeverTouchDeviceOrAuthorize()
     {
         OcrGroundedSnapshot snapshot = CreateSnapshot();
-        var state = CreateActiveState(snapshot);
-        var click = new Mock<IClickService>(MockBehavior.Strict);
-        var freshness = new Mock<IOcrGroundedSnapshotFreshnessGuard>(MockBehavior.Strict);
-        freshness.Setup(x => x.AcquireCurrent(snapshot))
-            .Throws(new InvalidOperationException("OCR-grounded snapshot is stale."));
+        var state = ActiveState(snapshot);
+        var provider = new Mock<IPlannerTrustedClickRequestProvider>(MockBehavior.Strict);
+        var trustedClick = new Mock<ITrustedGroundedClickService>(MockBehavior.Strict);
+        provider.Setup(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("OCR-grounded snapshot is stale."));
+        OcrGroundedPlannerClickTool sut = CreateTool(state, provider, trustedClick);
 
-        OcrGroundedPlannerClickTool sut = CreateTool(state, click, freshness);
-        Action act = () => sut.Click("ocr-0");
+        Func<Task> act = () => sut.Click("ocr-0");
 
-        act.Should().Throw<InvalidOperationException>()
+        await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*snapshot is stale*");
-        freshness.Verify(x => x.AcquireCurrent(snapshot), Times.Once);
-        freshness.VerifyNoOtherCalls();
-        click.Verify(x => x.ClickAbsolute(It.IsAny<double>(), It.IsAny<double>()), Times.Never);
-        click.VerifyNoOtherCalls();
+        provider.Verify(x => x.GetApprovedRequestAsync(snapshot, "ocr-0", It.IsAny<CancellationToken>()), Times.Once);
+        state.VerifyNoOtherCalls();
+        provider.VerifyNoOtherCalls();
+        trustedClick.VerifyNoOtherCalls();
     }
 
-    private static Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>>
-        CreateActiveState(OcrGroundedSnapshot snapshot)
+    private static OcrGroundedPlannerClickTool CreateTool(
+        Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>> state,
+        Mock<IPlannerTrustedClickRequestProvider> provider,
+        Mock<ITrustedGroundedClickService> trustedClick) =>
+        new(state.Object, new TrustedPlannerClickExecutor(provider.Object, trustedClick.Object));
+
+    private static Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>> ActiveState(
+        OcrGroundedSnapshot snapshot)
     {
         var state = new Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>>(MockBehavior.Strict);
         state.SetupGet(x => x.Current).Returns(new OcrGroundedPlannerExecutionState(snapshot));
@@ -78,20 +86,7 @@ public sealed class Issue50PlannerRuntimeSecurityBoundaryTests
 
     private static OcrGroundedSnapshot CreateSnapshot() =>
         new("snapshot-issue50", [
-            new OcrGroundedTarget("ocr-0", "Target", Rectangle.FromXYWH(10, 20, 20, 20))
+            new OcrGroundedTarget("ocr-0", "Target",
+                CoordinateUtilityServices.Rectangle.FromXYWH(10, 20, 20, 20))
         ]);
-
-    private static OcrGroundedPlannerClickTool CreateTool(
-        Mock<IAiToolExecutionStateAccessor<OcrGroundedPlannerExecutionState>> state,
-        Mock<IClickService> click,
-        Mock<IOcrGroundedSnapshotFreshnessGuard> freshness)
-    {
-        var groundedClick = new OcrGroundedClickService(
-            click.Object,
-            freshness.Object,
-            GroundedClickTestDoubles.Authorization(),
-            GroundedClickTestDoubles.Evidence());
-        var executor = new OcrGroundedPlannerActionExecutor(groundedClick);
-        return new OcrGroundedPlannerClickTool(state.Object, executor);
-    }
 }
