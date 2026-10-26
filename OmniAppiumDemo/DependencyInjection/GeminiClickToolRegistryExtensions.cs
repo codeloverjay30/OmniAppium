@@ -18,7 +18,8 @@ public static class GeminiClickToolRegistryExtensions
         AiClickExecutionMode mode,
         bool isProduction,
         Func<ClickService> directClickFactory,
-        Func<OcrGroundedPlannerClickTool> protectedClickFactory)
+        Func<OcrGroundedPlannerClickTool> protectedClickFactory,
+        bool isTrustedPlannerConfigured = true)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(directClickFactory);
@@ -29,6 +30,8 @@ public static class GeminiClickToolRegistryExtensions
         switch (mode)
         {
             case AiClickExecutionMode.Protected:
+                if (!isTrustedPlannerConfigured)
+                    break;
                 gate.EnsureAllowed(typeof(OcrGroundedPlannerClickTool));
                 registry.Register<OcrGroundedPlannerClickTool>(protectedClickFactory);
                 break;

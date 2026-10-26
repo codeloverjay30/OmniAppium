@@ -531,7 +531,6 @@ logger.LogInformation(
                 IOcrGroundedPlannerActionExecutor,
                 OcrGroundedPlannerActionExecutor>();
 
-            services.AddSingleton<OcrGroundedPlannerClickTool>();
 
             services.AddSingleton<
                 IOcrGroundedPlannerExecutionScopeFactory,
@@ -779,14 +778,15 @@ logger.LogInformation(
         aiClickMode,
         isProductionAiRuntime,
         () => clickService,
-        () => aiPlannerClickTool ?? throw new InvalidOperationException("Planner tool is not initialized."));
+        () => aiPlannerClickTool ?? throw new InvalidOperationException("Planner tool is not initialized."),
+        isTrustedPlannerConfigured: !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PLANNER_TRUSTED_REQUEST_JSON"))
+            && !args.Contains("--issue50-smoke", StringComparer.Ordinal));
 
     geminiToolRegistry.Register<WaitService>(
         () => waitService);
 
 #endif
 
-            services.AddTransient<TrustedPlannerClickExecutor>();
             services.AddGeminiAutomation(
                 aiExecutionSettings,
                 geminiToolRegistry,
@@ -887,7 +887,7 @@ logger.LogInformation(
 
             // ========================================================
 #if AUTO_EXECUTE_TASKS
-            aiPlannerClickTool = serviceProvider.GetRequiredService<OcrGroundedPlannerClickTool>();
+            aiPlannerClickTool = serviceProvider.GetService<OcrGroundedPlannerClickTool>();
 #endif
 
             // 10. Resolve production services.
