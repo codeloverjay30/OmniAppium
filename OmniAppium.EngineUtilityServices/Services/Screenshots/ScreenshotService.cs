@@ -1,6 +1,4 @@
-﻿
-
-using LoggerFactoryUtilityServices;
+﻿using LoggerFactoryUtilityServices;
 using Microsoft.Extensions.Logging;
 using NetRuntimeUtilityServices;
 using OmniAppium.BaseUtilityServices;
@@ -14,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 using OmniRectangle = OmniAppium.ConfigUtilityServices.Models.Rectangle; // 你的自定義類別
+using CoordinateRectangle = CoordinateUtilityServices.Rectangle;
 
 namespace OmniAppium.EngineUtilityService.Services.Screenshots
 {
@@ -247,6 +246,12 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
             }
         }
 
+        /// <inheritdoc/>
+        public void CropScreenshot(CoordinateRectangle area)
+        {
+            CropScreenshot(area.ToSystemDrawing());
+        }
+
 
         /// <summary>
         /// Crops the cached screenshot while the caller owns the screenshot-state lock.
@@ -330,7 +335,14 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
                 imageFormat);
         }
 
-
+        /// <inheritdoc/>
+        public void TakeAndSaveScreenshot(
+            CoordinateRectangle area,
+            string filename,
+            ImageFormat? imageFormat = null)
+        {
+            TakeAndSaveScreenshot(area.ToSystemDrawing(), filename, imageFormat);
+        }
         /// <inheritdoc/>
         public void TakeAndSaveScreenshot(
             string filename)

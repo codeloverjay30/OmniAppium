@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Drawing; // 系統級
 using System.Text;
 using OmniRectangle = OmniAppium.ConfigUtilityServices.Models.Rectangle; // 你的自定義類別
-
+using CoordinateRectangle = CoordinateUtilityServices.Rectangle;
 namespace OmniAppium.EngineUtilityService.Services.Screenshots
 {
     /// <summary>
@@ -33,6 +33,11 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
         /// <param name="area">The rectangular area to retain.</param>
         void CropScreenshot(System.Drawing.Rectangle area);
         /// <summary>
+        /// Crops the cached screenshot using validated domain coordinates.
+        /// </summary>
+        /// <param name="area">The domain rectangle to retain.</param>
+        void CropScreenshot(CoordinateRectangle area);
+        /// <summary>
         /// Crops the cached screenshot to the specified area.
         /// </summary>
         /// <param name="area">The rectangular area to retain.</param>
@@ -57,6 +62,14 @@ namespace OmniAppium.EngineUtilityService.Services.Screenshots
         /// <param name="filename">The destination file name.</param>
         /// <param name="imageFormat">The image format, or null to use PNG.</param>
         void TakeAndSaveScreenshot(OmniRectangle area,string filename, System.Drawing.Imaging.ImageFormat? imageFormat = null);
+
+        /// <summary>
+        /// Captures, crops, and saves a screenshot using domain coordinates.
+        /// </summary>
+        /// <param name="area">The domain rectangle to retain.</param>
+        /// <param name="filename">The destination file name.</param>
+        /// <param name="imageFormat">The image format, or null to use PNG.</param>
+        void TakeAndSaveScreenshot(CoordinateRectangle area, string filename, System.Drawing.Imaging.ImageFormat? imageFormat = null);
 
         /// <summary>
         /// Captures a fresh screenshot and returns encoded bytes belonging to that exact capture.
