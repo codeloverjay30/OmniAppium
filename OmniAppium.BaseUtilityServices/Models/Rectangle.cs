@@ -1,5 +1,8 @@
+using System.ComponentModel;
+using CustomDataAnnotations.Maintenance;
 namespace OmniAppium.ConfigUtilityServices.Models
 {
+ 
     public class Rectangle
     {
         /// <summary>
