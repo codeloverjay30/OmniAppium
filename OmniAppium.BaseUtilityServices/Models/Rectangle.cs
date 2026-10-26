@@ -2,6 +2,10 @@ using System.ComponentModel;
 using CustomDataAnnotations.Maintenance;
 namespace OmniAppium.ConfigUtilityServices.Models
 {
+    /// <summary>
+    /// Represents a deprecated rectangle configuration model
+    /// retained for backward compatibility.
+    /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
     [Obsolete(
     "Use CoordinateUtilityServices.Rectangle instead. " +
