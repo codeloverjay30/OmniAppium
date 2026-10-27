@@ -682,5 +682,5 @@ repomix.config.json
 #### === END OF comment === ####
 
 # configuration for Demo
-!*Demo/**/.json5
-!*Demo/**/.json
+!*Demo/**/*.json5
+!*Demo/**/*.json
