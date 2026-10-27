@@ -5,20 +5,6 @@
 ### ============================================ ###
 
 ### --------------------------------------------------------------------------------------------------------- ###
-### --- THESE ENTRIES ARE SPECIFIC (AND IT PROVIDES FOR CONFIGURATION OF SUBCONATINER UNDER THIS CONTAINER) --- ###
-### --- AND THUS HARDCODED --- ###
-### --- DON'T DELETE IT --- ###
-### --- OTHERWISE, YOU WILL PROBABLY FORGOT THE SOURCE TO COPY IT IN THE FUTURE --- ###
-### --------------------------------------------------------------------------------------------------------- ###
-
-# templates
-[Tt]emplates/
-
-### --------------------------------------------------------------------------------------------------------- ###
-### --- END OF COMMENT --- ###
-### --------------------------------------------------------------------------------------------------------- ###
-
-### --------------------------------------------------------------------------------------------------------- ###
 ### --- THESE ENTRIES ARE SPECIFIC (AND IT IS USED FOR PASS THE BUILD (MSBUILD) THAT USES MY CUSTOM CONFIGURATIONS) --- ###
 ### --- AND THUS HARDCODED --- ###
 ### --- DON'T DELETE IT --- ###
@@ -684,3 +670,17 @@ repomix.config.json
 # configuration for Demo
 !*Demo/**/*.json5
 !*Demo/**/*.json
+
+### --------------------------------------------------------------------------------------------------------- ###
+### --- THESE ENTRIES ARE SPECIFIC (AND IT PROVIDES FOR CONFIGURATION OF SUBCONATINER UNDER THIS CONTAINER) --- ###
+### --- AND THUS HARDCODED --- ###
+### --- DON'T DELETE IT --- ###
+### --- OTHERWISE, YOU WILL PROBABLY FORGOT THE SOURCE TO COPY IT IN THE FUTURE --- ###
+### --------------------------------------------------------------------------------------------------------- ###
+
+# templates
+![Tt]emplates/
+
+### --------------------------------------------------------------------------------------------------------- ###
+### --- END OF COMMENT --- ###
+### --------------------------------------------------------------------------------------------------------- ###
