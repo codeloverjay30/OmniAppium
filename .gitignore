@@ -675,3 +675,12 @@ repomix.config.json
 
 !Attachment[Ss]/**/*.md
 !Attachment/**/*.md
+
+#### ================================================ ####
+#### === configuration for Demo === ####
+#### === it is used for AI (chatGPT) === ####
+#### === END OF comment === ####
+
+# configuration for Demo
+!*Demo/**/.json5
+!*Demo/**/.json
