@@ -126,41 +126,6 @@ Directory.Build.targets
 
 # Files
 
-## File: AiUtility.AiBaseUtilityServices/AiUtility.AiBaseUtilityServices.csproj
-```
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
-    <MinMSBuildReq>19.0</MinMSBuildReq>
-    <MinNetSdkReq>10.0</MinNetSdkReq>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-      <Version>3.0.0-preview-1.0.0</Version>
-      <PackageTags>$(PackageTags);AI;AiModels</PackageTags>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="AssemblyUtilityServices" />
-    <PackageReference Include="CustomDataAnnotations" />
-    <PackageReference Include="EnumUtilityServices" />
-    <PackageReference Include="ExceptionHandlingUtilityServices" />
-    <PackageReference Include="ExceptionWrappers" />
-    <PackageReference Include="ExceptionFactories" />
-    <PackageReference Include="FileStreamUtilityServices" />
-    <PackageReference Include="FluentValidation" />
-    <PackageReference Include="JsonUtilityServices" />
-    <PackageReference Include="LoggerFactoryUtilityServices" />
-    <PackageReference Include="CommonModels" />
-    <PackageReference Include="TaskUtilityServices" />
-    <PackageReference Include="ThreadLevelLockingUtilityServices" />
-    <PackageReference Include="TypeUtilityServices" />
-    <PackageReference Include="ReflectionUtilityServices" />
-    <PackageReference Include="TypeConstants" Aliases="TypeAlias" />
-    <PackageReference Include="MimeTypeConstants" Aliases="MimeTypeAlias" />
-  </ItemGroup>
-</Project>
-```
-
 ## File: AiUtility.AiBaseUtilityServices/AiUtility.AiBaseUtilityServices.csproj.lscache
 ```
 version=1
@@ -1170,27 +1135,6 @@ namespace AiUtility.GeminiKits.Abstractions
 }
 ```
 
-## File: AiUtility.GeminiKits/AiUtility.GeminiKits.csproj
-```
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-      <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
-      <MinMSBuildReq>19.0</MinMSBuildReq>
-      <MinNetSdkReq>10.0</MinNetSdkReq>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-      <Version>3.0.0-preview-1.0.0</Version>
-      <PackageTags>$(PackageTags);AI;AiModels;AiModel Toolkit</PackageTags>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\AiUtility.ToolKits\AiUtility.ToolKits.csproj" />
-  </ItemGroup>
-
-</Project>
-```
-
 ## File: AiUtility.GeminiKits/AiUtility.GeminiKits.csproj.lscache
 ```
 version=1
@@ -1815,30 +1759,6 @@ namespace AiUtility.GeminiKits.Services
         }
     }
 }
-```
-
-## File: AiUtility.GeminiUtilityServices/AiUtility.GeminiUtilityServices.csproj
-```
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-      <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
-      <MinMSBuildReq>19.0</MinMSBuildReq>
-      <MinNetSdkReq>10.0</MinNetSdkReq>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-      <Version>3.0.0-preview-1.0.0</Version>
-      <PackageTags>$(PackageTags);AI;AiModels;Gemini AI Studio</PackageTags>
-  </PropertyGroup>
-  <ItemGroup>
-      <PackageReference Include="MimeTypeConstants" Aliases="MimeTypeAlias" />
-      <PackageReference Include="TypeConstants" Aliases="TypeAlias" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\AiUtility.ToolKits\AiUtility.ToolKits.csproj" />
-    <ProjectReference Include="..\AiUtility.GeminiKits\AiUtility.GeminiKits.csproj" />
-  </ItemGroup>
-</Project>
 ```
 
 ## File: AiUtility.GeminiUtilityServices/AiUtility.GeminiUtilityServices.csproj.lscache
@@ -5525,30 +5445,6 @@ namespace AiUtility.ToolKits.Abstractions
 }
 ```
 
-## File: AiUtility.ToolKits/AiUtility.ToolKits.csproj
-```
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-      <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
-      <MinMSBuildReq>19.0</MinMSBuildReq>
-      <MinNetSdkReq>10.0</MinNetSdkReq>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <Version>3.0.0-preview-1.0.0</Version>
-      <PackageTags>$(PackageTags);AiModels;AiModel Toolkits</PackageTags>
-    </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\AiUtility.AiBaseUtilityServices\AiUtility.AiBaseUtilityServices.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-  </ItemGroup>
-
-</Project>
-```
-
 ## File: AiUtility.ToolKits/AiUtility.ToolKits.csproj.lscache
 ```
 version=1
@@ -6190,5 +6086,109 @@ namespace AiUtility.ToolKits.Registry
 <Project>
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)../'))" 
           Condition="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)../')) != ''" />
+</Project>
+```
+
+## File: AiUtility.AiBaseUtilityServices/AiUtility.AiBaseUtilityServices.csproj
+```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
+    <MinMSBuildReq>19.0</MinMSBuildReq>
+    <MinNetSdkReq>10.0</MinNetSdkReq>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+      <Version>4.0.0-preview-1.0.1</Version>
+      <PackageTags>$(PackageTags);AI;AiModels</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AssemblyUtilityServices" />
+    <PackageReference Include="CustomDataAnnotations" />
+    <PackageReference Include="EnumUtilityServices" />
+    <PackageReference Include="ExceptionHandlingUtilityServices" />
+    <PackageReference Include="ExceptionWrappers" />
+    <PackageReference Include="ExceptionFactories" />
+    <PackageReference Include="FileStreamUtilityServices" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="JsonUtilityServices" />
+    <PackageReference Include="LoggerFactoryUtilityServices" />
+    <PackageReference Include="CommonModels" />
+    <PackageReference Include="TaskUtilityServices" />
+    <PackageReference Include="ThreadLevelLockingUtilityServices" />
+    <PackageReference Include="TypeUtilityServices" />
+    <PackageReference Include="ReflectionUtilityServices" />
+    <PackageReference Include="TypeConstants" Aliases="TypeAlias" />
+    <PackageReference Include="MimeTypeConstants" Aliases="MimeTypeAlias" />
+  </ItemGroup>
+</Project>
+```
+
+## File: AiUtility.GeminiKits/AiUtility.GeminiKits.csproj
+```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+      <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
+      <MinMSBuildReq>19.0</MinMSBuildReq>
+      <MinNetSdkReq>10.0</MinNetSdkReq>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+      <Version>4.0.0-preview-1.0.1</Version>
+      <PackageTags>$(PackageTags);AI;AiModels;AiModel Toolkit</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AiUtility.ToolKits\AiUtility.ToolKits.csproj" />
+  </ItemGroup>
+
+</Project>
+```
+
+## File: AiUtility.GeminiUtilityServices/AiUtility.GeminiUtilityServices.csproj
+```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+      <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
+      <MinMSBuildReq>19.0</MinMSBuildReq>
+      <MinNetSdkReq>10.0</MinNetSdkReq>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+      <Version>4.0.0-preview-1.0.1</Version>
+      <PackageTags>$(PackageTags);AI;AiModels;Gemini AI Studio</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+      <PackageReference Include="MimeTypeConstants" Aliases="MimeTypeAlias" />
+      <PackageReference Include="TypeConstants" Aliases="TypeAlias" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AiUtility.ToolKits\AiUtility.ToolKits.csproj" />
+    <ProjectReference Include="..\AiUtility.GeminiKits\AiUtility.GeminiKits.csproj" />
+  </ItemGroup>
+</Project>
+```
+
+## File: AiUtility.ToolKits/AiUtility.ToolKits.csproj
+```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+      <!-- 透過C#語言的inline task來在編譯時期檢查該專案所使用的MSBuild版本和.NET SDK版本，若版本過舊則丟出編譯錯誤 -->
+      <MinMSBuildReq>19.0</MinMSBuildReq>
+      <MinNetSdkReq>10.0</MinNetSdkReq>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>4.0.0-preview-1.0.1</Version>
+      <PackageTags>$(PackageTags);AiModels;AiModel Toolkits</PackageTags>
+    </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AiUtility.AiBaseUtilityServices\AiUtility.AiBaseUtilityServices.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
 </Project>
 ```

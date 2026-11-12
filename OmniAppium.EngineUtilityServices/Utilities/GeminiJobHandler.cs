@@ -10,6 +10,7 @@ using CommonModels;
 using OmniAppium.ConfigUtilityServices.Models;
 using OmniAppium.EngineUtilityServices.Models.Observation;
 using OmniAppium.EngineUtilityServices.Services.Observation;
+using OmniAppium.EngineUtilityServices.Services.Navigation;
 using OmniAppium.EngineUtilityServices.Services.Planner;
 
 namespace OmniAppium.EngineUtilityService.Utilities;
@@ -35,6 +36,8 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
     private readonly IProgress<TProgress> _progressBar;
 
     private AiExecutionSettings _aiExecutionSettings;
+    private readonly ITrustedNavigationEvidenceCollector? _navigationEvidenceCollector;
+    private readonly INavigationCompletionGuard? _navigationCompletionGuard;
 
     private readonly IOcrGroundedPlannerExecutionScopeFactory _plannerExecutionScopeFactory;
 
@@ -67,6 +70,44 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
         _progressBar = progressBar;
     }
 
+
+    /// <summary>
+    /// Creates a Gemini handler with trusted navigation evidence validation.
+    /// </summary>
+    /// <param name="aiExecutionSettings">AI execution settings.</param>
+    /// <param name="registry">Registered Gemini tools.</param>
+    /// <param name="converter">Gemini tool declaration converter.</param>
+    /// <param name="sessionManager">Gemini session manager.</param>
+    /// <param name="screenObservationService">Atomic screen observation service.</param>
+    /// <param name="plannerExecutionScopeFactory">Trusted planner execution scope factory.</param>
+    /// <param name="progressBar">Workflow progress reporter.</param>
+    /// <param name="navigationEvidenceCollector">Trusted navigation evidence collector.</param>
+    /// <param name="navigationCompletionGuard">Navigation completion validator.</param>
+    public GeminiJobHandler(
+        AiExecutionSettings aiExecutionSettings,
+        IGeminiToolRegistry registry,
+        GeminiToolConverter converter,
+        IGeminiSessionManager sessionManager,
+        IAndroidScreenObservationService screenObservationService,
+        IOcrGroundedPlannerExecutionScopeFactory plannerExecutionScopeFactory,
+        IProgress<TProgress> progressBar,
+        ITrustedNavigationEvidenceCollector navigationEvidenceCollector,
+        INavigationCompletionGuard navigationCompletionGuard)
+        : this(
+            aiExecutionSettings,
+            registry,
+            converter,
+            sessionManager,
+            screenObservationService,
+            plannerExecutionScopeFactory,
+            progressBar)
+    {
+        ArgumentNullException.ThrowIfNull(navigationEvidenceCollector);
+        ArgumentNullException.ThrowIfNull(navigationCompletionGuard);
+
+        _navigationEvidenceCollector = navigationEvidenceCollector;
+        _navigationCompletionGuard = navigationCompletionGuard;
+    }
 
     /// <summary>
     /// Updates the AI execution settings used by subsequent Gemini jobs.
@@ -228,7 +269,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
          * Gemini tool calls therefore resolve against the planner state derived
          * from the same observation used above.
          */
-        await _sessionManager
+        StatusJsonModels? result = await _sessionManager
             .ExecuteWithToolSupportAsync<TProgress>(
                 request,
                 gJob.UserTask.AsMemory(),
@@ -236,6 +277,46 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
                 default,
                 _progressBar)
             .ConfigureAwait(false);
+
+        if (result?.StatusList is not { Count: > 0 })
+        {
+            throw new InvalidOperationException(
+                "Gemini workflow returned no execution status.");
+        }
+
+        if (result.StatusList.Any(status => status is null || !status.IsSuccess))
+        {
+            throw new InvalidOperationException(
+                "Gemini workflow reported an unsuccessful execution.");
+        }
+
+        if (gJob.RequiresNavigationVerification &&
+            (_navigationEvidenceCollector is null || _navigationCompletionGuard is null))
+        {
+            throw new InvalidOperationException(
+                "Navigation verification requires a trusted evidence collector and completion guard.");
+        }
+
+        if (_navigationCompletionGuard is not null)
+        {
+            IReadOnlyList<NavigationActionEvidence> actions =
+                _navigationEvidenceCollector?.GetEvidence()
+                ?? Array.Empty<NavigationActionEvidence>();
+
+            if (actions is null)
+            {
+                throw new InvalidOperationException(
+                    "The trusted navigation evidence collector returned null actions.");
+            }
+
+            // Copy the collection to avoid observing later mutations.
+            NavigationCompletionEvidence evidence = new(
+                RequiresNavigationVerification: gJob.RequiresNavigationVerification,
+                SessionSucceeded: true,
+                Actions: actions.ToArray());
+
+            _navigationCompletionGuard.Validate(evidence);
+        }
     }
 
     /// <summary>

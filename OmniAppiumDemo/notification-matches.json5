@@ -1,0 +1,23 @@
+{
+  "profileId": "RedExclamationBadge",
+  "templatePath": "Templates/Notifications/red-exclamation.png",
+  "minimumSimilarity": 0.90,
+  "minimumScale": 0.75,
+  "maximumScale": 1.25,
+  "scaleStep": 0.05,
+  "requireUniqueIconAssociation": true,
+  "allowAutomaticClick": false,
+  
+  "association": {
+    "enabled": true,
+    "maxHorizontalGapPx": 48,
+    "maxVerticalGapPx": 32,
+    "maxHorizontalGapRatio": 1.0,
+    "maxVerticalGapRatio": 1.0,
+    "maxInwardOverlapPx": 8,
+    "enableIconAboveLabel": true,
+    "iconAboveLabelMinVerticalPx": 70,
+    "iconAboveLabelMaxVerticalPx": 120,
+    "iconAboveLabelRightAlignmentPx": 12
+  }
+}

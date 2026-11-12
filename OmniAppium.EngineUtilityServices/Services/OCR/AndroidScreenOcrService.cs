@@ -53,6 +53,41 @@ public sealed class AndroidScreenOcrService(
     }
 
     /// <summary>
+    /// Recognizes a source-image region from an existing screenshot without recapturing it.
+    /// </summary>
+    /// <param name="imageBuffer">The original encoded screenshot.</param>
+    /// <param name="region">The source-image region to recognize.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>OCR results in original screenshot coordinates.</returns>
+    public async Task<OcrResult> RecognizeRegionAsync(
+        ReadOnlyMemory<byte> imageBuffer,
+        CoordinateUtilityServices.Rectangle region,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (imageBuffer.IsEmpty)
+            throw new InvalidOperationException(EmptyImageMessage);
+
+        double x = region.TopLeft.X;
+        double y = region.TopLeft.Y;
+        double width = region.Width;
+        double height = region.Height;
+        if (!double.IsFinite(x) || !double.IsFinite(y) ||
+            !double.IsFinite(width) || !double.IsFinite(height) ||
+            x < 0 || y < 0 || width <= 0 || height <= 0 ||
+            !double.IsFinite(x + width) || !double.IsFinite(y + height))
+            throw new ArgumentOutOfRangeException(nameof(region),
+                "OCR region must have finite, nonnegative source coordinates and positive dimensions.");
+
+        OcrResult result = await ocrUtilityService
+            .RecognizeRegionAsync(imageBuffer.ToArray(), region, "zh-TW", cancellationToken)
+            .ConfigureAwait(false);
+
+        return result ?? throw new InvalidOperationException(
+            "Regional OCR returned a null result.");
+    }
+
+    /// <summary>
     /// Recognizes text from an existing screenshot and attempts to persist
     /// a diagnostic copy without making diagnostic IO a prerequisite for OCR.
     /// </summary>

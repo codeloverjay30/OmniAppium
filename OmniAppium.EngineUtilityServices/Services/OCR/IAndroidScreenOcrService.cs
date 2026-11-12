@@ -32,6 +32,19 @@ public interface IAndroidScreenOcrService
     /// <returns>
     /// Text and text-line bounds in the supplied image's pixel coordinates.
     /// </returns>
+    /// <summary>
+    /// Recognizes a region of an existing screenshot without capturing another frame.
+    /// Returned text bounds use the original screenshot coordinate system.
+    /// </summary>
+    /// <param name="imageBuffer">The original encoded screenshot.</param>
+    /// <param name="region">A region in original screenshot coordinates.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>OCR text and source-image bounds.</returns>
+    Task<OcrResult> RecognizeRegionAsync(
+        ReadOnlyMemory<byte> imageBuffer,
+        CoordinateUtilityServices.Rectangle region,
+        CancellationToken cancellationToken = default);
+
     Task<OcrResult> RecognizeAsync(
         ReadOnlyMemory<byte> imageBuffer,
         CancellationToken cancellationToken = default);

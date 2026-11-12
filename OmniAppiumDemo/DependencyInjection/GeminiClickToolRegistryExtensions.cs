@@ -31,7 +31,10 @@ public static class GeminiClickToolRegistryExtensions
         {
             case AiClickExecutionMode.Protected:
                 if (!isTrustedPlannerConfigured)
-                    break;
+                {
+                    throw new InvalidOperationException(
+                        "Protected AI click tool requires a trusted planner configuration.");
+                }
                 gate.EnsureAllowed(typeof(OcrGroundedPlannerClickTool));
                 registry.Register<OcrGroundedPlannerClickTool>(protectedClickFactory);
                 break;

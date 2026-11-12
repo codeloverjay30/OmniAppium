@@ -8,23 +8,30 @@
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Moq" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.IO.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.IO.Abstractions.TestingHelpers" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="xunit.v3.mtp-v2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../OmniAppium.EngineUtilityServices/OmniAppium.EngineUtilityServices.csproj" />
-    <ProjectReference Include="..\OmniAppiumDemo\OmniAppiumDemo.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../OmniAppiumDemo/OmniAppiumDemo.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Moq" />
-    <PackageReference Include="FluentAssertions" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="System.IO.Abstractions.TestingHelpers" />
+    <EmbeddedResource Include="TestData/Issue59/original.png" LogicalName="Issue59Fixtures.original.png" />
+    <EmbeddedResource Include="TestData/Issue59/red-dot-annotated.png" LogicalName="Issue59Fixtures.red-dot-annotated.png" />
+    <EmbeddedResource Include="TestData/Issue59/20261027-134215.zip" LogicalName="Issue59Fixtures.20261027-134215.zip" />
   </ItemGroup>
 </Project>

@@ -41,7 +41,7 @@ using AiUtility.GeminiUtilityServices.Services;
 using AiUtility.ToolKits.Abstractions;
 using AiUtility.ToolKits.Execution;
 using AiUtility.ToolKits.Services;
-        using CommonModels;
+using CommonModels;
 using CoordinateUtilityServices;
 using EnumUtilityServices;
 using ExpressionTreeUtilityServices;
@@ -71,7 +71,8 @@ using OmniAppium.EngineUtilityServices.Services.Click;
 using OmniAppium.EngineUtilityServices.Services.AiSecurity;
 using OmniAppiumDemo.SmokeTests;
 using OmniAppiumDemo.SmokeTests.Issue55;
-
+using OmniAppiumDemo.SmokeTests.Issue59;
+using OmniAppium.EngineUtilityServices.Services.Exploration;
 
 namespace OmniAppiumDemo;
 
@@ -765,25 +766,34 @@ logger.LogInformation(
                             progress);
                     });
 
-            OcrGroundedPlannerClickTool? aiPlannerClickTool = null;
+            GeminiWorkflowClickScope geminiWorkflowClickScope = new();
 
             // Register real Appium tools only for automation mode.
             // The read-only smoke test should not expose mutating tools.
 
 #if AUTO_EXECUTE_TASKS
 
+// Read-only smoke tests must not register mutating AI tools.
+bool isReadOnlySmokeTest =
+    args.Contains("--issue59-smoke", StringComparer.Ordinal);
+
+if (!isReadOnlySmokeTest)
+{
     // Production is always Protected. Direct AI clicking is permitted only
     // when explicitly selected for a non-production development run.
     geminiToolRegistry.RegisterAiClickTools(
         aiClickMode,
         isProductionAiRuntime,
         () => clickService,
-        () => aiPlannerClickTool ?? throw new InvalidOperationException("Planner tool is not initialized."),
-        isTrustedPlannerConfigured: !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PLANNER_TRUSTED_REQUEST_JSON"))
+        geminiWorkflowClickScope.ResolveClickTool,
+        isTrustedPlannerConfigured:
+            !string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable("PLANNER_TRUSTED_REQUEST_JSON"))
             && !args.Contains("--issue50-smoke", StringComparer.Ordinal));
 
     geminiToolRegistry.Register<WaitService>(
         () => waitService);
+}
 
 #endif
 
@@ -855,6 +865,9 @@ logger.LogInformation(
             // Legacy click routes remain blocked in production.
             services.AddProductionClickSecurity();
 
+            // Issue #59: red-dot observation integration.
+            services.AddIssue59RedDotExploration();
+
             // ========================================================
             // 9. Build the service provider exactly once.
             // ========================================================
@@ -885,11 +898,47 @@ logger.LogInformation(
                 return result;
             }
 
-            // ========================================================
-#if AUTO_EXECUTE_TASKS
-            aiPlannerClickTool = serviceProvider.GetService<OcrGroundedPlannerClickTool>();
-#endif
+            if (args.Contains("--issue59-smoke", StringComparer.Ordinal))
+            {
+                logger.LogInformation(
+                    "Starting Issue 59 red-dot real-device smoke test.");
 
+                Issue59RedDotSmokeTestRunner runner =
+                    serviceProvider.GetRequiredService<Issue59RedDotSmokeTestRunner>();
+
+                RedDotAssociationResult result =
+                    await runner.RunAsync(Issue59OcrTargetFactory.Create);
+
+                logger.LogInformation(
+                    "Issue 59 observation: {ObservationId}",
+                    result.ObservationId);
+
+                logger.LogInformation(
+                    "Issue 59 detected red dots: {Count}",
+                    result.Evidence.Count);
+
+                logger.LogInformation(
+                    "Issue 59 associated nodes: {Count}",
+                    result.Nodes.Count);
+
+                foreach (RedDotEvidence evidence in result.Evidence)
+                {
+                    logger.LogInformation(
+                        "Red-dot confidence={Confidence:F3}, " +
+                        "ambiguous={IsAmbiguous}, " +
+                        "candidateNodeIds={CandidateNodeIds}",
+                        evidence.Confidence,
+                        evidence.IsAmbiguous,
+                        string.Join(",", evidence.CandidateNodeIds));
+                }
+
+                logger.LogInformation(
+                    "Issue 59 red-dot smoke test completed.");
+
+                return 0;
+            }
+
+            // ========================================================
             // 10. Resolve production services.
             // ========================================================
 
@@ -1218,8 +1267,13 @@ logger.LogInformation(
             new ScreenshotJobHandler(screenshotService)
         };
 
+    // The handler and registered click factory must share this workflow scope.
+    using IServiceScope automationWorkflowScope = serviceProvider.CreateScope();
+    using IDisposable automationClickScopeLease =
+        geminiWorkflowClickScope.Enter(automationWorkflowScope);
+
     IGeminiJobHandler automationGeminiHandler =
-        serviceProvider.GetRequiredService<
+        automationWorkflowScope.ServiceProvider.GetRequiredService<
             IGeminiJobHandler>();
 
     handlers.Add(automationGeminiHandler);

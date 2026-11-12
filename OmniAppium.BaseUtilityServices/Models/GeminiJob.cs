@@ -18,6 +18,11 @@ public sealed class GeminiJob : Job, IValidatable
     public string? Prompt { get; set; }
 
     /// <summary>
+    /// Gets or sets whether successful completion requires verified navigation evidence.
+    /// </summary>
+    public bool RequiresNavigationVerification { get; set; }
+
+    /// <summary>
     /// Validates the Gemini automation job.
     /// </summary>
     /// <returns>

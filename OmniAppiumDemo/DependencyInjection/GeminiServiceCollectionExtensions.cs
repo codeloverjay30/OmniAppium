@@ -5,6 +5,9 @@ using AiUtility.GeminiUtilityServices.Models;
 using AiUtility.GeminiUtilityServices.Services;
 using CommonModels;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using OmniAppium.EngineUtilityServices.Services.Navigation;
+using OmniAppium.EngineUtilityServices.Services.Planner;
 using OmniAppium.EngineUtilityService.Utilities;
 
 namespace OmniAppiumDemo.DependencyInjection;
@@ -68,7 +71,19 @@ public static class GeminiServiceCollectionExtensions
         services.AddSingleton(
             progress);
 
-        services.AddSingleton<
+        // The guard is stateless; navigation evidence is never process-global.
+        services.TryAddSingleton<
+            INavigationCompletionGuard,
+            NavigationCompletionGuard>();
+
+        // A workflow must be executed within its own IServiceScope.
+        // Missing trusted executor/verifier dependencies intentionally fail closed.
+        services.TryAddScoped<ITrustedNavigationEvidenceCollector>(
+            provider => new TrustedNavigationEvidenceCollector(
+                provider.GetRequiredService<TrustedPlannerClickExecutor>(),
+                provider.GetRequiredService<ITrustedNavigationDestinationVerifier>()));
+
+        services.AddScoped<
             IGeminiJobHandler,
             GeminiJobHandler<WorkflowProgress>>();
 

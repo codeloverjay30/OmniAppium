@@ -39,7 +39,7 @@ public static class TrustedPlannerClickServiceCollectionExtensions
 
         services.AddSingleton<IPlannerTrustedClickRequestProvider>(providerFactory);
         services.AddTransient<TrustedPlannerClickExecutor>();
-        services.AddTransient<OcrGroundedPlannerClickTool>();
+        services.AddScoped<OcrGroundedPlannerClickTool>();
         return services;
     }
 }
