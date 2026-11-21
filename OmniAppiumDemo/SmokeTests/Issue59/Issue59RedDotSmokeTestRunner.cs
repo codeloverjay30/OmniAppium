@@ -64,6 +64,28 @@ public sealed class Issue59RedDotSmokeTestRunner
                     "Issue 59 icon target: targetId={TargetId}, x={X}, y={Y}, width={Width}, height={Height}",
                     icon.TargetId, icon.IconBounds.TopLeft.X, icon.IconBounds.TopLeft.Y,
                     icon.IconBounds.Width, icon.IconBounds.Height);
+            // Read-only diagnostics for the currently visible Main City badge.
+            // These observations never modify icons, targets, or ownership.
+            try
+            {
+                var diagnostics = new SameFrameNotificationIconDiagnostics().Diagnose(
+                    observation.ImageBytes, targets,
+                    badgeCenterX: 237.5, badgeCenterY: 323.5);
+                foreach (NotificationIconDiagnostic item in diagnostics)
+                {
+                    _logger.LogInformation(
+                        "Issue 59 MAIN CITY ICON DIAGNOSTIC: circle=({X},{Y}), radius={Radius}, reason={Reason}, nearestTargetId={TargetId}, nearestText={Text}, nearestLabelReason={LabelReason}, alignedLabels={Aligned}",
+                        item.CenterX, item.CenterY, item.Radius, item.Reason,
+                        item.NearestTargetId ?? "(none)",
+                        item.NearestText ?? "(none)",
+                        item.NearestLabelReason ?? "(none)", item.AlignedLabelCount);
+                }
+            }
+            catch (Exception diagnosticError) when (diagnosticError is not OutOfMemoryException)
+            {
+                _logger.LogWarning(diagnosticError,
+                    "Issue 59 MAIN CITY ICON DIAGNOSTIC unavailable; ownership unchanged.");
+            }
             return icons;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -75,10 +97,205 @@ public sealed class Issue59RedDotSmokeTestRunner
     }
 
     /// <summary>
+    /// Diagnoses the Main City label and nearby Hough circles from one immutable baseline frame.
+    /// Local OCR evidence is never admitted into production association or click execution.
+    /// </summary>
+    private async Task DiagnoseMainCityRegionAsync(
+        IAndroidScreenObservation observation,
+        CancellationToken cancellationToken)
+    {
+        if (_regionalOcr is null)
+        {
+            _logger.LogWarning("Issue 59 MAIN CITY LOCAL RE-OCR skipped: OCR adapter unavailable.");
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            using Mat image = Cv2.ImDecode(observation.ImageBytes.ToArray(), ImreadModes.Color);
+            if (image.Empty())
+                throw new InvalidOperationException("Main City baseline screenshot could not be decoded.");
+
+            // Reviewed 2340x1080 baseline only. Coordinates are not portable across layouts.
+            if (image.Width != 2340 || image.Height != 1080)
+            {
+                _logger.LogWarning(
+                    "Issue 59 MAIN CITY LOCAL RE-OCR skipped: unexpected frame {Width}x{Height}.",
+                    image.Width, image.Height);
+                return;
+            }
+
+            var region = CoordinateUtilityServices.Rectangle.FromXYWH(125, 375, 180, 85);
+            SaveMainCityCropReviewReadOnly(image, 125, 375, 180, 85);
+            OcrResult result = await _regionalOcr.RecognizeRegionAsync(
+                observation.ImageBytes, region, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "Issue 59 MAIN CITY LOCAL RE-OCR UNTRUSTED: lines={Count}, region=({X},{Y},{Width},{Height}), frame={FrameWidth}x{FrameHeight}",
+                result.Lines.Count, region.TopLeft.X, region.TopLeft.Y,
+                region.Width, region.Height, image.Width, image.Height);
+
+            foreach (OcrTextLine line in result.Lines)
+            {
+                if (line is null)
+                    continue;
+                _logger.LogInformation(
+                    "Issue 59 MAIN CITY LOCAL RE-OCR line: text={Text}, bounds=({X},{Y},{Width},{Height})",
+                    line.Text, line.Bounds.TopLeft.X, line.Bounds.TopLeft.Y,
+                    line.Bounds.Width, line.Bounds.Height);
+            }
+
+            // Log untrusted word geometry before strict line-level selection.
+            // No word is promoted to an association target by this diagnostic.
+            foreach (OcrTextLine line in result.Lines)
+            {
+                if (line is null)
+                    continue;
+
+                if (line.Words is null || line.Words.Count == 0)
+                {
+                    _logger.LogInformation(
+                        "Issue 59 MAIN CITY LOCAL RE-OCR words: count=0, lineText={Text}; word-level geometry unavailable.",
+                        line.Text);
+                    continue;
+                }
+
+                for (int index = 0; index < line.Words.Count; index++)
+                {
+                    OcrTextWord? word = line.Words[index];
+                    if (word is null)
+                    {
+                        _logger.LogWarning(
+                            "Issue 59 MAIN CITY LOCAL RE-OCR word: index={Index}, status=NULL_WORD.",
+                            index);
+                        continue;
+                    }
+
+                    string compactText = string.Concat(
+                        (word.Text ?? string.Empty).Where(
+                            character => !char.IsWhiteSpace(character)));
+                    bool exactMainCity = string.Equals(
+                        compactText, "主城", StringComparison.Ordinal);
+
+                    _logger.LogInformation(
+                        "Issue 59 MAIN CITY LOCAL RE-OCR word: index={Index}, text={Text}, bounds=({X},{Y},{Width},{Height}), exactMainCity={ExactMainCity}, status=UNTRUSTED_DIAGNOSTIC_ONLY",
+                        index, word.Text, word.Bounds.TopLeft.X, word.Bounds.TopLeft.Y,
+                        word.Bounds.Width, word.Bounds.Height, exactMainCity);
+                }
+            }
+
+            NotificationRegionalOcrSelectionDiagnostic selection =
+                NotificationRegionalOcrCandidateSelector.Diagnose(
+                    result, region, image.Width, image.Height, "主城",
+                    "issue59-diagnostic-main-city");
+
+            _logger.LogInformation(
+                "Issue 59 MAIN CITY LOCAL RE-OCR selection: status={Status}, reason={Reason}, actual={Actual}",
+                selection.Candidate is null ? "REJECTED" : "DIAGNOSTIC_ONLY",
+                selection.Reason, selection.ObservedText ?? "(none)");
+
+            IReadOnlyList<OcrGroundedTarget> diagnosticTargets =
+                selection.Candidate is null
+                    ? Array.Empty<OcrGroundedTarget>()
+                    : [selection.Candidate];
+
+            // Run the same Hough parameters used by the existing diagnostic service.
+            // No production icon, target or ownership collections are mutated.
+            IReadOnlyList<NotificationIconDiagnostic> circles =
+                new SameFrameNotificationIconDiagnostics().Diagnose(
+                    observation.ImageBytes, diagnosticTargets,
+                    badgeCenterX: 237.5, badgeCenterY: 323.5);
+
+            foreach (NotificationIconDiagnostic circle in circles)
+            {
+                _logger.LogInformation(
+                    "Issue 59 MAIN CITY SAME-FRAME REVIEW: circle=({X},{Y}), radius={Radius}, reason={Reason}, label={Label}, labelReason={LabelReason}, alignedLabels={Aligned}",
+                    circle.CenterX, circle.CenterY, circle.Radius, circle.Reason,
+                    circle.NearestText ?? "(none)",
+                    circle.NearestLabelReason ?? "(none)", circle.AlignedLabelCount);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger.LogWarning(ex,
+                "Issue 59 MAIN CITY LOCAL RE-OCR unavailable; production ownership unchanged.");
+        }
+    }
+
+    /// <summary>
+    /// Saves the exact baseline crop passed to Main City OCR and a nearest-neighbor enlarged
+    /// copy for visual review. A diagnostic IO failure never changes OCR or ownership.
+    /// </summary>
+    private void SaveMainCityCropReviewReadOnly(
+        Mat baseline,
+        int x,
+        int y,
+        int width,
+        int height)
+    {
+        try
+        {
+            if (baseline.Empty() || x < 0 || y < 0 || width <= 0 || height <= 0 ||
+                (long)x + width > baseline.Width || (long)y + height > baseline.Height)
+            {
+                _logger.LogWarning(
+                    "Issue 59 MAIN CITY CROP REVIEW skipped: invalid crop ({X},{Y},{Width},{Height}).",
+                    x, y, width, height);
+                return;
+            }
+
+            using Mat crop = new(baseline, new OpenCvSharp.Rect(x, y, width, height));
+            using Mat enlarged = new();
+            Cv2.Resize(crop, enlarged, new OpenCvSharp.Size(width * 2, height * 2),
+                interpolation: InterpolationFlags.Nearest);
+
+            string directory = Path.Combine(
+                AppContext.BaseDirectory, "Screenshots", "Issue59-MainCity-Diagnostics");
+            Directory.CreateDirectory(directory);
+
+            string name = $"maincity-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-{Guid.NewGuid():N}";
+            string cropPath = Path.Combine(directory, $"{name}-crop.png");
+            string enlargedPath = Path.Combine(directory, $"{name}-crop-2x.png");
+
+            if (!Cv2.ImEncode(".png", crop, out byte[] cropBytes) ||
+                cropBytes.Length == 0)
+            {
+                throw new IOException(
+                    "Main City original crop PNG encoding failed.");
+            }
+
+            if (!Cv2.ImEncode(".png", enlarged, out byte[] enlargedBytes) ||
+                enlargedBytes.Length == 0)
+            {
+                throw new IOException(
+                    "Main City enlarged crop PNG encoding failed.");
+            }
+
+            File.WriteAllBytes(cropPath, cropBytes);
+            File.WriteAllBytes(enlargedPath, enlargedBytes);
+
+
+            _logger.LogInformation(
+                "Issue 59 MAIN CITY CROP REVIEW: crop={CropPath}, enlarged={EnlargedPath}, region=({X},{Y},{Width},{Height})",
+                cropPath, enlargedPath, x, y, width, height);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger.LogWarning(ex,
+                "Issue 59 MAIN CITY CROP REVIEW unavailable; OCR and ownership unchanged.");
+        }
+    }
+
+    /// <summary>
     /// Inspects the limited-gift text area using the baseline frame only.
     /// Results are untrusted diagnostics and never enter ownership analysis.
     /// </summary>
-    private async Task DiagnoseLimitedGiftRegionAsync(
+    private async Task<OcrGroundedTarget?> DiagnoseLimitedGiftRegionAsync(
         IAndroidScreenObservation observation,
         CancellationToken cancellationToken)
     {
@@ -86,7 +303,7 @@ public sealed class Issue59RedDotSmokeTestRunner
         {
             _logger.LogWarning(
                 "Issue 59 LOCAL RE-OCR UNTRUSTED skipped: OCR adapter unavailable.");
-            return;
+            return null;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -106,7 +323,7 @@ public sealed class Issue59RedDotSmokeTestRunner
                 _logger.LogWarning(
                     "Issue 59 LOCAL RE-OCR UNTRUSTED skipped: unexpected image size {Width}x{Height}.",
                     image.Width, image.Height);
-                return;
+                return null;
             }
 
             var region = CoordinateUtilityServices.Rectangle.FromXYWH(
@@ -129,6 +346,17 @@ public sealed class Issue59RedDotSmokeTestRunner
                     line.Text, line.Bounds.TopLeft.X, line.Bounds.TopLeft.Y,
                     line.Bounds.Width, line.Bounds.Height);
             }
+
+            const string expectedLabel = "限時禮包";
+            NotificationRegionalOcrSelectionDiagnostic selection =
+                NotificationRegionalOcrCandidateSelector.Diagnose(
+                    result, region, image.Width, image.Height,
+                    expectedLabel, "issue59-regional-limited-gift");
+            _logger.LogInformation(
+                "Issue 59 LOCAL RE-OCR candidate: {Status}, reason={Reason}, expected={Expected}, actual={Actual}",
+                selection.Candidate is null ? "REJECTED" : "LABEL_ONLY_UNTRUSTED",
+                selection.Reason, expectedLabel, selection.ObservedText ?? "(none)");
+            return selection.Candidate;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -139,6 +367,7 @@ public sealed class Issue59RedDotSmokeTestRunner
             _logger.LogWarning(ex,
                 "Issue 59 LOCAL RE-OCR UNTRUSTED failed; ownership evidence unchanged.");
         }
+        return null;
     }
 
     /// <summary>
@@ -165,9 +394,10 @@ public sealed class Issue59RedDotSmokeTestRunner
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Read-only diagnostic: never add regional OCR lines to targetFactory output.
-        await DiagnoseLimitedGiftRegionAsync(observation, cancellationToken)
-            .ConfigureAwait(false);
+        // OCR uses the exact baseline bytes. A label alone never grants ownership.
+        OcrGroundedTarget? regionalCandidate =
+            await DiagnoseLimitedGiftRegionAsync(observation, cancellationToken)
+                .ConfigureAwait(false);
 
         bool isTargetFactoryConfigured = targetFactory is not null;
 
@@ -204,6 +434,11 @@ public sealed class Issue59RedDotSmokeTestRunner
             "Issue 59 OCR targets: {OcrTargetCount}",
             targets.Count);
 
+        // Read-only same-frame Main City OCR and Hough diagnostics.
+        // Never add this local candidate to production targets or icon targets.
+        await DiagnoseMainCityRegionAsync(observation, cancellationToken)
+            .ConfigureAwait(false);
+
         string observationId = Guid.NewGuid().ToString("N");
 
         // Capture independent follow-up observations; never reuse the baseline.
@@ -225,12 +460,44 @@ public sealed class Issue59RedDotSmokeTestRunner
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
+        // Only an independently detected, uniquely aligned same-frame icon can
+        // admit the regional label into the production association input.
+        IReadOnlyList<OcrGroundedTarget> analysisTargets = targets;
+        IReadOnlyList<NotificationIconTarget> iconTargets;
+        if (regionalCandidate is not null &&
+            targets.All(target => !string.Equals(
+                target.Id, regionalCandidate.Id, StringComparison.Ordinal)))
+        {
+            OcrGroundedTarget[] proposedTargets = [.. targets, regionalCandidate];
+            IReadOnlyList<NotificationIconTarget> proposedIcons =
+                DetectIconsReadOnly(observation, proposedTargets);
+            bool hasUniqueRegionalIcon = proposedIcons.Count(icon =>
+                string.Equals(icon.TargetId, regionalCandidate.Id, StringComparison.Ordinal)) == 1;
+            if (hasUniqueRegionalIcon)
+            {
+                analysisTargets = proposedTargets;
+                iconTargets = proposedIcons;
+                _logger.LogInformation(
+                    "Issue 59 LOCAL RE-OCR candidate ADMITTED: same-frame icon present; ownership still requires verified badge and unique association.");
+            }
+            else
+            {
+                iconTargets = DetectIconsReadOnly(observation, targets);
+                _logger.LogInformation(
+                    "Issue 59 LOCAL RE-OCR candidate REJECTED: no unique same-frame icon.");
+            }
+        }
+        else
+        {
+            iconTargets = DetectIconsReadOnly(observation, targets);
+        }
+
         var input = new RedDotObservationInput(
             observationId,
             observation,
-            targets)
+            analysisTargets)
         {
-            IconTargets = DetectIconsReadOnly(observation, targets),
+            IconTargets = iconTargets,
             NotificationTemplate = templateBytes,
             TemplateOptions = new NotificationTemplateMatchOptions(RequireExclamationGlyph: true),
             SubsequentObservations = subsequentObservations,
