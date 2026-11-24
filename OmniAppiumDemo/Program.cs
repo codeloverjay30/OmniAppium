@@ -1077,7 +1077,10 @@ logger.LogInformation(
                     provider.GetRequiredService<IScreenFrameDifferenceAnalyzer>(),
                     provider.GetRequiredService<IOcrTargetStabilityEvaluatorFactory>(),
                     provider.GetRequiredService<IOcrObservationLineNormalizer>(),
-                    provider.GetRequiredService<ScreenObservationStabilityOptions>()));
+                    provider.GetRequiredService<ScreenObservationStabilityOptions>())
+                {
+                    UseRegionalOcrForStability = args.Contains("--issue59-smoke", StringComparer.Ordinal)
+                });
 
             // ========================================================
             // 8. Gemini infrastructure.
