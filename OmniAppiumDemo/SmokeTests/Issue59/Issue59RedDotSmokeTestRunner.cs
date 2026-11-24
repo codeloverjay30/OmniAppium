@@ -442,13 +442,38 @@ public sealed class Issue59RedDotSmokeTestRunner
         string observationId = Guid.NewGuid().ToString("N");
 
         // Capture independent follow-up observations; never reuse the baseline.
-        var subsequentObservations = new List<IAndroidScreenObservation>(2);
-        for (int index = 0; index < 2; index++)
+        static byte MedianLuminance(IAndroidScreenObservation sample)
+        {
+            using Mat image = Cv2.ImDecode(sample.ImageBytes.ToArray(), ImreadModes.Color);
+            if (image.Empty())
+                throw new InvalidOperationException("Issue 59: could not decode observation for luminance check.");
+            using var gray = new Mat();
+            Cv2.CvtColor(image, gray, ColorConversionCodes.BGR2GRAY);
+            var values = new byte[77];
+            int index = 0;
+            for (int y = 1; y <= 7; y++)
+            for (int x = 1; x <= 11; x++)
+                values[index++] = gray.At<byte>(y * gray.Height / 8, x * gray.Width / 12);
+            Array.Sort(values);
+            return values[values.Length / 2];
+        }
+
+        const int requiredFollowUps = 2;
+        const int maximumAttempts = 4;
+        double minimumLuminance = MedianLuminance(observation) * 0.5;
+        var subsequentObservations = new List<IAndroidScreenObservation>(requiredFollowUps);
+        for (int attempt = 1; attempt <= maximumAttempts && subsequentObservations.Count < requiredFollowUps; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            subsequentObservations.Add(await ObserveOrDiagnoseAsync(
-                $"follow-up-{index + 1}", cancellationToken).ConfigureAwait(false));
+            var sample = await ObserveOrDiagnoseAsync($"follow-up-attempt-{attempt}", cancellationToken).ConfigureAwait(false);
+            byte luminance = MedianLuminance(sample);
+            bool accepted = luminance >= minimumLuminance;
+            Console.WriteLine($"[Issue59FollowUp] attempt={attempt} luminance={luminance} minimum={minimumLuminance:F1} accepted={accepted}");
+            if (accepted)
+                subsequentObservations.Add(sample);
         }
+        if (subsequentObservations.Count < requiredFollowUps)
+            throw new InvalidOperationException($"Issue 59: only {subsequentObservations.Count}/{requiredFollowUps} follow-up observations met the luminance threshold after {maximumAttempts} attempts.");
 
         // Load the reviewed badge before invoking the production integration boundary.
         string templatePath = Path.Combine(AppContext.BaseDirectory,
