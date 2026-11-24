@@ -1247,7 +1247,7 @@ logger.LogInformation(
 
 // Read-only smoke tests must not register mutating AI tools.
 bool isReadOnlySmokeTest =
-    args.Contains("--issue59-smoke", StringComparer.Ordinal);
+    args.Contains("--issue59-smoke", StringComparer.Ordinal) || args.Contains("--issue61-export-review", StringComparer.Ordinal);
 
 if (!isReadOnlySmokeTest)
 {
