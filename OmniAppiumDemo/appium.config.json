@@ -6,6 +6,9 @@
         ],
         "address": "127.0.0.1",
         "port": 4723,
+        "default-capabilities": {
+            "appium:newCommandTimeout": 900
+        },
         "allow-insecure": [
             "*:get_system_logs",
             "*:adb_shell"
