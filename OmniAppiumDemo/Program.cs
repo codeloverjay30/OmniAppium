@@ -1059,7 +1059,7 @@ logger.LogInformation(
                     MaximumCenterMovement = 0.02,
                     RequiredConsecutiveMatches = 2,
                     SampleInterval = TimeSpan.FromMilliseconds(250),
-                    Timeout = TimeSpan.FromSeconds(45)
+                    Timeout = TimeSpan.FromSeconds(args.Contains("--issue59-smoke", StringComparer.Ordinal) ? 180 : 45)
                 };
 
                 options.Validate();
