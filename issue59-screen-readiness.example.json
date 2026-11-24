@@ -1,0 +1,8 @@
+{
+  "ReferenceImage": "ready-reference.png",
+  "TemplateRegion": { "X": 0.692, "Y": 0.875, "Width": 0.021, "Height": 0.041 },
+  "SearchRegion": { "X": 0.679, "Y": 0.858, "Width": 0.049, "Height": 0.084 },
+  "MinimumScore": 0.85,
+  "TimeoutSeconds": 90,
+  "PollMilliseconds": 2000
+}

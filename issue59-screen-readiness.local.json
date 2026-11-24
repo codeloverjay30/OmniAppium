@@ -1,0 +1,18 @@
+{
+  "PollMilliseconds": 2000,
+  "TimeoutSeconds": 90,
+  "ReferenceImage": "D:\\workspace\\utility_packages\\experiments\\Scrawler\\Phone\\AndroidApp\\GamesScrawler\\OmniAppium.Engine\\OmniAppiumDemo\\bin\\Debug\\net10.0-windows10.0.19041.0\\Screenshots\\issue59-bottom-ee553f72657e4094b912b5f7924a5342.png",
+  "SearchRegion": {
+    "Y": 0.858,
+    "Width": 0.049,
+    "X": 0.679,
+    "Height": 0.084
+  },
+  "TemplateRegion": {
+    "Y": 0.875,
+    "Width": 0.021,
+    "X": 0.692,
+    "Height": 0.041
+  },
+  "MinimumScore": 0.85
+}
