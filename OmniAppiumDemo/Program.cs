@@ -81,11 +81,478 @@ namespace OmniAppiumDemo;
 /// </summary>
 public static class Program
 {
+    private sealed class Issue59DiagnosticRunner(OCRUtilityServices.Paddle.Python.IPythonOcrProcessRunner inner) : OCRUtilityServices.Paddle.Python.IPythonOcrProcessRunner
+    {
+        public string? ResponseJson { get; private set; }
+        public async Task<string> RunAsync(string imagePath, System.Threading.CancellationToken cancellationToken)
+        {
+            string json = await inner.RunAsync(imagePath, cancellationToken);
+            ResponseJson = json;
+            return json;
+        }
+    }
+
+    private static OCRUtilityServices.Paddle.Python.PythonOcrProcessOptions ReadIssue59PythonOcrOptions()
+    {
+        string executable = Environment.GetEnvironmentVariable("ISSUE59_PYTHON_EXECUTABLE")
+            ?? throw new InvalidOperationException("Set ISSUE59_PYTHON_EXECUTABLE.");
+        string script = Environment.GetEnvironmentVariable("ISSUE59_PYTHON_BRIDGE_SCRIPT")
+            ?? throw new InvalidOperationException("Set ISSUE59_PYTHON_BRIDGE_SCRIPT.");
+        return new(Path.GetFullPath(executable), Path.GetFullPath(script), TimeSpan.FromMinutes(3));
+    }
+
+    private sealed record ScreenRegion(double X, double Y, double Width, double Height)
+    {
+        public OpenCvSharp.Rect ToPixels(OpenCvSharp.Mat image)
+        {
+            if (!(X >= 0 && Y >= 0 && Width > 0 && Height > 0 &&
+                  X + Width <= 1 && Y + Height <= 1))
+                throw new InvalidDataException("Readiness regions must be normalized to [0, 1].");
+
+            int left = (int)Math.Floor(X * image.Width);
+            int top = (int)Math.Floor(Y * image.Height);
+            int right = (int)Math.Ceiling((X + Width) * image.Width);
+            int bottom = (int)Math.Ceiling((Y + Height) * image.Height);
+            return new OpenCvSharp.Rect(left, top, right - left, bottom - top);
+        }
+    }
+
+    private sealed record ScreenReadinessOptions(
+        string ReferenceImage, ScreenRegion TemplateRegion, ScreenRegion SearchRegion,
+        double MinimumScore, int TimeoutSeconds, int PollMilliseconds)
+    {
+        public string? Reject(byte[] screenshot, OpenCvSharp.Mat template)
+        {
+            using var frame = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Grayscale);
+            using var search = new OpenCvSharp.Mat(frame, SearchRegion.ToPixels(frame));
+            if (template.Width > search.Width || template.Height > search.Height)
+                throw new InvalidDataException("Readiness template exceeds the search region.");
+            using var scores = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.MatchTemplate(search, template, scores, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
+            OpenCvSharp.Cv2.MinMaxLoc(scores, out _, out double maximum, out _, out _);
+            return double.IsFinite(maximum) && maximum >= MinimumScore
+                ? null
+                : $"target screen not ready (template score {maximum:F3}, minimum {MinimumScore:F3})";
+        }
+    }
+
+    private static async Task<int> RunIssue59BottomCaptureAsync(
+        Func<byte[]> captureFrame,
+        Func<byte[], Task<int>> verifyFrame,
+        Microsoft.Extensions.Logging.ILogger logger,
+        string? screenshotsDirectory,
+        TimeSpan retryDelay,
+        Func<byte[], string?>? rejectScreen = null,
+        TimeSpan? readinessTimeout = null)
+    {
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        const int maximumAttempts = 4;
+        string captureId = Guid.NewGuid().ToString("N");
+        byte[] screenshot = Array.Empty<byte>();
+        string? rejection = null;
+        for (int attempt = 1; readinessTimeout.HasValue || attempt <= maximumAttempts; attempt++)
+        {
+            if (attempt > 1 && retryDelay > TimeSpan.Zero)
+            {
+                TimeSpan remaining = readinessTimeout is { } timeout
+                    ? timeout - timer.Elapsed : retryDelay;
+                if (remaining <= TimeSpan.Zero)
+                    break;
+                await Task.Delay(remaining < retryDelay ? remaining : retryDelay);
+                if (readinessTimeout is { } deadline && timer.Elapsed >= deadline)
+                    break;
+            }
+
+            screenshot = captureFrame();
+            rejection = GetIssue59BottomFrameRejection(screenshot);
+            if (rejection is null && rejectScreen is not null)
+                rejection = rejectScreen(screenshot);
+            if (readinessTimeout is { } limit && timer.Elapsed >= limit)
+                rejection ??= "readiness deadline elapsed during capture";
+
+            string? diagnosticPath = null;
+            if (screenshotsDirectory is not null && screenshot.Length > 0)
+            {
+                diagnosticPath = Path.Combine(screenshotsDirectory, $"issue59-bottom-{captureId}-{attempt:D2}.png");
+                await File.WriteAllBytesAsync(diagnosticPath, screenshot);
+            }
+
+            logger.LogInformation(
+                "Issue 59 bottom frame {Attempt}/{MaximumAttempts}: {Decision}, path={Path}",
+                attempt, readinessTimeout.HasValue ? "deadline" : maximumAttempts.ToString(), rejection ?? "accepted", diagnosticPath ?? "(none)");
+            if (rejection is null)
+            {
+                logger.LogInformation("Issue 59 bottom navigation input: {Path}", diagnosticPath);
+                break;
+            }
+        }
+
+        if (rejection is not null)
+        {
+            if (readinessTimeout.HasValue)
+            {
+                logger.LogError("Screen readiness timed out after {ElapsedMs} ms: {Reason}",
+                    timer.ElapsedMilliseconds, rejection);
+                return 2;
+            }
+
+            logger.LogError(
+                "Issue 59 bottom navigation: no usable frame after {Attempts} attempts, elapsedMs={ElapsedMs}, lastReason={Reason}",
+                maximumAttempts, timer.ElapsedMilliseconds, rejection);
+            return 2;
+        }
+
+        var captureMs = timer.ElapsedMilliseconds;
+        int exitCode = await verifyFrame(screenshot);
+        logger.LogInformation(
+            "Issue 59 bottom navigation: captureMs={CaptureMs}, verificationMs={VerificationMs}, totalMs={TotalMs}, exitCode={ExitCode}",
+            captureMs, timer.ElapsedMilliseconds - captureMs, timer.ElapsedMilliseconds, exitCode);
+        return exitCode;
+    }
+
+    private static async Task<(ScreenReadinessOptions Options, OpenCvSharp.Mat Reference)> LoadScreenReadinessAsync(string readinessPath)
+    {
+        readinessPath = Path.GetFullPath(readinessPath);
+        var readiness = System.Text.Json.JsonSerializer.Deserialize<ScreenReadinessOptions>(
+            await File.ReadAllTextAsync(readinessPath));
+        if (readiness is null || string.IsNullOrWhiteSpace(readiness.ReferenceImage) ||
+            readiness.TemplateRegion is null || readiness.SearchRegion is null ||
+            readiness.TimeoutSeconds <= 0 || readiness.PollMilliseconds <= 0 ||
+            !(readiness.MinimumScore > 0 && readiness.MinimumScore <= 1))
+            throw new InvalidDataException("Invalid screen readiness configuration.");
+
+        string referencePath = Path.Combine(Path.GetDirectoryName(readinessPath)!, readiness.ReferenceImage);
+        var reference = OpenCvSharp.Cv2.ImRead(referencePath, OpenCvSharp.ImreadModes.Grayscale);
+        if (reference.Empty())
+        {
+            reference.Dispose();
+            throw new InvalidDataException($"Could not load readiness reference: {referencePath}");
+        }
+        return (readiness, reference);
+
+    }
+
+    private static async Task<int> RunIssue59ReadinessTimeoutRegressionAsync(string[] args)
+    {
+        if (args.Length != 3)
+        {
+            Console.Error.WriteLine("Usage: --issue59-readiness-timeout-regression <readiness.json> <update.png>");
+            return 2;
+        }
+
+        var (readiness, referenceImage) = await LoadScreenReadinessAsync(args[1]);
+        using var reference = referenceImage;
+        using var template = new OpenCvSharp.Mat(reference, readiness.TemplateRegion.ToPixels(reference));
+        byte[] updating = await File.ReadAllBytesAsync(args[2]);
+        string? frameRejection = GetIssue59BottomFrameRejection(updating);
+        if (frameRejection is not null)
+        {
+            Console.Error.WriteLine($"Update fixture failed the basic frame check: {frameRejection}");
+            return 2;
+        }
+
+        string? reason = readiness.Reject(updating, template);
+        if (reason is null)
+        {
+            Console.Error.WriteLine("Update fixture unexpectedly matched the ready screen.");
+            return 2;
+        }
+
+        var logger = new ReadinessRegressionLogger();
+        int captures = 0;
+        int verifyCalls = 0;
+        int exitCode = await RunIssue59BottomCaptureAsync(
+            () => { captures++; return updating; },
+            _ => { verifyCalls++; return Task.FromResult(0); },
+            logger, screenshotsDirectory: null, retryDelay: TimeSpan.FromMilliseconds(50),
+            rejectScreen: screenshot => readiness.Reject(screenshot, template),
+            readinessTimeout: TimeSpan.FromSeconds(1));
+
+        bool passed = captures > 0 && verifyCalls == 0 && exitCode == 2 && logger.TimedOut;
+        Console.WriteLine($"Issue #59 readiness timeout: captures={captures}, verifyCalls={verifyCalls}, exitCode={exitCode}, pass={passed}");
+        return passed ? 0 : 2;
+    }
+
+    private sealed class ReadinessRegressionLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public bool TimedOut { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel level) =>
+            level == Microsoft.Extensions.Logging.LogLevel.Error;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel level,
+            Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (!IsEnabled(level))
+                return;
+
+            string message = formatter(state, exception);
+            TimedOut |= message.StartsWith("Screen readiness timed out", StringComparison.Ordinal);
+            Console.WriteLine(message);
+        }
+    }
+
+    private static async Task<int> RunIssue59BottomRetakeRegressionAsync(string[] args)
+    {
+        if (args.Length != 3)
+        {
+            Console.Error.WriteLine("Usage: --issue59-bottom-retake-regression <dark.png> <normal.png>");
+            return 2;
+        }
+
+        byte[] darkFrame = await File.ReadAllBytesAsync(args[1]);
+        byte[] normalFrame = await File.ReadAllBytesAsync(args[2]);
+        string? darkReason = GetIssue59BottomFrameRejection(darkFrame);
+        string? normalReason = GetIssue59BottomFrameRejection(normalFrame);
+        if (darkReason?.StartsWith("dark frame", StringComparison.Ordinal) != true || normalReason is not null)
+        {
+            Console.Error.WriteLine($"Unexpected fixtures. Dark: {darkReason ?? "accepted"}. Normal: {normalReason ?? "accepted"}.");
+            return 2;
+        }
+
+        // The regression reports capture and verification counts directly.
+        var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+        async Task<bool> CheckAsync(string name, byte[][] frames, int expectedCaptures, int expectedVerifications, int expectedExit)
+        {
+            int captures = 0;
+            int verifications = 0;
+            bool verifiedNormalFrame = true;
+            int exitCode = await RunIssue59BottomCaptureAsync(
+                () => frames[captures++],
+                frame =>
+                {
+                    verifications++;
+                    verifiedNormalFrame &= ReferenceEquals(frame, normalFrame);
+                    return Task.FromResult(0);
+                },
+                logger, screenshotsDirectory: null, retryDelay: TimeSpan.Zero);
+            bool passed = captures == expectedCaptures && verifications == expectedVerifications
+                && exitCode == expectedExit && verifiedNormalFrame;
+            Console.WriteLine($"Issue #59 {name}: captures={captures}, verifyCalls={verifications}, exitCode={exitCode}, pass={passed}");
+            return passed;
+        }
+
+        bool recovered = await CheckAsync("dark then normal", [darkFrame, normalFrame], 2, 1, 0);
+        bool exhausted = await CheckAsync("four dark frames",
+            [darkFrame, darkFrame, darkFrame, darkFrame, normalFrame], 4, 0, 2);
+        return recovered && exhausted ? 0 : 2;
+    }
+
+    private static string? GetIssue59BottomFrameRejection(byte[] screenshot)
+    {
+        if (screenshot.Length == 0)
+            return "empty screenshot";
+
+        using var frame = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Grayscale);
+        if (frame.Empty())
+            return "image decode failed";
+
+        if (frame.Width != 2340 || frame.Height != 1080)
+            return $"unexpected resolution {frame.Width}x{frame.Height}";
+
+        const byte minimumMedianLuminance = 57;
+        var samples = new byte[77];
+        int index = 0;
+        for (int y = 1; y <= 7; y++)
+        {
+            for (int x = 1; x <= 11; x++)
+                samples[index++] = frame.At<byte>(y * frame.Height / 8, x * frame.Width / 12);
+        }
+
+        Array.Sort(samples);
+        byte median = samples[samples.Length / 2];
+        return median < minimumMedianLuminance
+            ? $"dark frame (median {median} < {minimumMedianLuminance})"
+            : null;
+    }
+
+    private static async Task<int> VerifyIssue59BottomNavigationAsync(IServiceProvider provider, byte[] screenshot)
+    {
+        using var frame = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+        if (frame.Empty() || frame.Width != 2340 || frame.Height != 1080) { Console.Error.WriteLine("Issue #59: expected a 2340x1080 screenshot."); return 2; }
+        byte[] template = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "Templates", "Notifications", "red-exclamation.png"));
+        var templateOptions = new NotificationTemplateMatchOptions(RequireExclamationGlyph: true);
+        var cases = new[] { (Id: "general", Text: "武將", BadgeX: 1508), (Id: "equipment", Text: "裝備", BadgeX: 1678), (Id: "bag", Text: "背包", BadgeX: 1848) };
+        var bottomRegion = CoordinateUtilityServices.Rectangle.FromXYWH(1415, 985, 475, 80);
+        var bottomOcr = await provider.GetRequiredService<OCRUtilityServices.Services.IOCRUtilityService>().RecognizeRegionAsync(screenshot, bottomRegion, "zh-TW");
+        if (!bottomOcr.Lines.Any(line => string.Concat(line.Text.Where(c => !char.IsWhiteSpace(c))) == "裝備"))
+        {
+            var equipmentRegion = CoordinateUtilityServices.Rectangle.FromXYWH(1560, 960, 170, 120);
+            var retry = await provider.GetRequiredService<OCRUtilityServices.Services.IOCRUtilityService>().RecognizeRegionAsync(screenshot, equipmentRegion, "zh-TW");
+            Console.WriteLine("Issue #59 equipment retry OCR: " + string.Join(" | ", retry.Lines.Select(line => line.Text)));
+            if (NotificationRegionalOcrCandidateSelector.Select(retry, equipmentRegion, frame.Width, frame.Height, "裝備", "equipment") is not null)
+            {
+                var combined = bottomOcr.Lines.Concat(retry.Lines.Where(line => string.Concat(line.Text.Where(c => !char.IsWhiteSpace(c))) == "裝備")).ToArray();
+                bottomOcr = new OCRUtilityServices.Models.OcrResult(string.Join(Environment.NewLine, combined.Select(line => line.Text)), combined);
+            }
+        }
+        Console.WriteLine("Issue #59 bottom OCR: " + string.Join(" | ", bottomOcr.Lines.Select(line => line.Text)));
+        var bottomTargets = new List<OcrGroundedTarget>();
+        foreach (var item in cases)
+        {
+            var label = NotificationRegionalOcrCandidateSelector.Select(bottomOcr, bottomRegion, frame.Width, frame.Height, item.Text, item.Id);
+            if (label is null) { Console.Error.WriteLine($"Issue #59 FAIL: missing unique OCR label {item.Text}."); return 2; }
+            bottomTargets.Add(label);
+        }
+        var bottomIcons = new SameFrameNotificationIconDetector().Detect(screenshot, bottomTargets);
+        Console.WriteLine("Issue #59 bottom icons: " + string.Join(",", bottomIcons.Select(icon => icon.TargetId)));
+        var bottomObservation = new AndroidScreenObservation(screenshot, bottomOcr);
+        var bottomAssociation = provider.GetRequiredService<IRedDotObservationIntegrationService>().Analyze(new RedDotObservationInput(Guid.NewGuid().ToString("N"), bottomObservation, bottomTargets) { IconTargets = bottomIcons, NotificationTemplate = template, TemplateOptions = templateOptions });
+        bool passed = bottomIcons.Count == cases.Length;
+        foreach (var item in cases)
+        {
+            var badges = bottomAssociation.Evidence.Where(badge => Math.Abs(badge.Bounds.Center.X - item.BadgeX) <= 30 && badge.Bounds.Center.Y >= 895 && badge.Bounds.Center.Y <= 950).ToArray();
+            bool correct = badges.Length == 1 && !badges[0].IsAmbiguous && badges[0].CandidateNodeIds.Count == 1 && badges[0].CandidateNodeIds[0] == item.Id;
+            Console.WriteLine($"Issue #59 {item.Text}: badges={badges.Length}; owners={string.Join(",", badges.SelectMany(badge => badge.CandidateNodeIds))}; pass={correct}");
+            passed &= correct;
+        }
+        Console.WriteLine(passed ? "Issue #59 PASS: all three bottom badges have distinct expected owners." : "Issue #59 FAIL: bottom-navigation ownership was not verified.");
+        return passed ? 0 : 2;
+    }
+
     /// <summary>
     /// Initializes the Appium demo and runs the selected smoke test or automation mode.
     /// </summary>
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--issue59-readiness-timeout-regression")
+            return await RunIssue59ReadinessTimeoutRegressionAsync(args);
+
+        if (args.Length > 0 && args[0] == "--issue59-bottom-retake-regression")
+            return await RunIssue59BottomRetakeRegressionAsync(args);
+
+        if (args.Length > 0 && args[0] == "--issue59-badge-file")
+        {
+            if (args.Length != 2 && (args.Length != 3 || args[2] != "--bottom-navigation")) { Console.Error.WriteLine("Usage: --issue59-badge-file <2340x1080 screenshot> [--bottom-navigation]"); return 2; }
+            byte[] screenshot = await File.ReadAllBytesAsync(args[1]);
+            bool IsActivityBadge(double x, double y) => x >= 1630 && x < 1710 && y >= 65 && y < 135;
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.UseIssue59PythonOcr(ReadIssue59PythonOcrOptions());
+            services.AddIssue59RedDotExploration();
+            using var provider = services.BuildServiceProvider();
+            if (args.Length == 3)
+                return await VerifyIssue59BottomNavigationAsync(provider, screenshot);
+
+            using var frame = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (frame.Empty() || frame.Width != 2340 || frame.Height != 1080) { Console.Error.WriteLine("Issue #59: expected a 2340x1080 screenshot."); return 2; }
+            byte[] template = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "Templates", "Notifications", "red-exclamation.png"));
+            var templateOptions = new NotificationTemplateMatchOptions(RequireExclamationGlyph: true);
+            int nearbyBadges = provider.GetRequiredService<INotificationTemplateMatcher>().Match(screenshot, template, templateOptions).Count(match => IsActivityBadge(match.X + match.Width / 2.0, match.Y + match.Height / 2.0));
+            Console.WriteLine($"Issue #59 activity-slot badge candidates: {nearbyBadges}");
+            if (nearbyBadges != 1) { Console.Error.WriteLine("Issue #59: expected exactly one badge near the activity icon."); return 2; }
+            var region = CoordinateUtilityServices.Rectangle.FromXYWH(1568, 126, 142, 74);
+            var ocr = provider.GetRequiredService<OCRUtilityServices.Services.IOCRUtilityService>();
+            var result = await ocr.RecognizeRegionAsync(screenshot, region, "zh-TW");
+            Console.WriteLine("Issue #59 regional OCR: " + string.Join(" | ", result.Lines.Select(line => line.Text)));
+            var target = NotificationRegionalOcrCandidateSelector.Select(result, region, frame.Width, frame.Height, "超值活動", "issue59-activity");
+            if (target is null) { Console.Error.WriteLine("Issue #59: no unique corroborated activity label."); return 2; }
+            OcrGroundedTarget[] targets = [target];
+            var icons = new SameFrameNotificationIconDetector().Detect(screenshot, targets);
+            if (icons.Count != 1)
+            {
+                var activityBadge = provider.GetRequiredService<INotificationTemplateMatcher>()
+                    .Match(screenshot, template, templateOptions).Single(match => IsActivityBadge(match.X + match.Width / 2.0, match.Y + match.Height / 2.0));
+                var circles = new SameFrameNotificationIconDiagnostics().Diagnose(screenshot, targets, activityBadge.X + activityBadge.Width / 2.0, activityBadge.Y + activityBadge.Height / 2.0);
+                Console.WriteLine($"Issue #59 circle diagnostics: {circles.Count}; label bounds={target.Bounds}");
+                foreach (var circle in circles)
+                    Console.WriteLine($"circle=({circle.CenterX:F1},{circle.CenterY:F1}) radius={circle.Radius:F1} reason={circle.Reason} nearest={circle.NearestText} labelReason={circle.NearestLabelReason} aligned={circle.AlignedLabelCount}");
+                Console.Error.WriteLine($"Issue #59: expected one same-frame icon, found {icons.Count}.");
+                return 2;
+            }
+            var observation = new AndroidScreenObservation(screenshot, result);
+            var input = new RedDotObservationInput(Guid.NewGuid().ToString("N"), observation, targets)
+            {
+                IconTargets = icons,
+                NotificationTemplate = template,
+                TemplateOptions = templateOptions
+            };
+            var association = provider.GetRequiredService<IRedDotObservationIntegrationService>().Analyze(input);
+            var activityBadges = association.Evidence.Where(evidence => IsActivityBadge(evidence.Bounds.Center.X, evidence.Bounds.Center.Y)).ToArray();
+            foreach (var badge in activityBadges)
+                Console.WriteLine($"Issue #59 badge confidence={badge.Confidence:F3}; ambiguous={badge.IsAmbiguous}; owners={string.Join(",", badge.CandidateNodeIds)}");
+            if (activityBadges.Length != 1 || activityBadges[0].IsAmbiguous || activityBadges[0].CandidateNodeIds[0] != target.Id)
+            {
+                Console.Error.WriteLine("Issue #59: activity badge ownership was not verified.");
+                return 2;
+            }
+            Console.WriteLine("Issue #59 PASS: badge uniquely associated with 超值活動.");
+            return 0;
+        }
+
+        if (args.Length > 0 && args[0] == "--issue59-ocr-smoke")
+        {
+            string target = args.Length is 7 or 11 ? args[6] : "限時禮包";
+            int left = 1818, top = 238, right = 1928, bottom = 276;
+            if (string.IsNullOrWhiteSpace(target) ||
+                (args.Length != 2 &&
+                 (args.Length is not (6 or 7 or 11) ||
+                  !int.TryParse(args[2], out left) || !int.TryParse(args[3], out top) ||
+                  !int.TryParse(args[4], out right) || !int.TryParse(args[5], out bottom) ||
+                  left < 0 || top < 0 || right <= left || bottom <= top)))
+            {
+                Console.Error.WriteLine("Usage: --issue59-ocr-smoke <image> [left top right bottom [target [cropLeft cropTop cropRight cropBottom]]]");
+                return 2;
+            }
+
+            var smokeServices = new ServiceCollection();
+            smokeServices.UseIssue59PythonOcr(ReadIssue59PythonOcrOptions());
+            Issue59DiagnosticRunner? diagnosticRunner = null;
+            smokeServices.AddSingleton<OCRUtilityServices.Paddle.Python.IPythonOcrProcessRunner>(provider =>
+                diagnosticRunner = new Issue59DiagnosticRunner(new OCRUtilityServices.Paddle.Python.PythonOcrProcessRunner(
+                    provider.GetRequiredService<OCRUtilityServices.Paddle.Python.PythonOcrProcessOptions>())));
+            using var smokeProvider = smokeServices.BuildServiceProvider();
+            var ocr = smokeProvider.GetRequiredService<OCRUtilityServices.Services.IOCRUtilityService>();
+            CoordinateUtilityServices.Rectangle? region = null;
+            if (args.Length == 11)
+            {
+                if (!int.TryParse(args[7], out int cropLeft) || !int.TryParse(args[8], out int cropTop) ||
+                    !int.TryParse(args[9], out int cropRight) || !int.TryParse(args[10], out int cropBottom) ||
+                    cropLeft < 0 || cropTop < 0 || cropRight <= cropLeft || cropBottom <= cropTop)
+                {
+                    Console.Error.WriteLine("Invalid OCR crop bounds.");
+                    return 2;
+                }
+
+                region = CoordinateUtilityServices.Rectangle.FromXYWH(
+                    cropLeft, cropTop, cropRight - cropLeft, cropBottom - cropTop);
+            }
+
+            byte[] image = await File.ReadAllBytesAsync(args[1]);
+            var result = region is { } crop
+                ? await ocr.RecognizeRegionAsync(image, crop, "zh-TW")
+                : await ocr.RecognizeAsync(image);
+            if (diagnosticRunner?.ResponseJson is { } json)
+            {
+                var envelope = global::Issue59.Contract.OcrContractReader.Read(json);
+                double dx = region is { } roi ? roi.TopLeft.X : 0;
+                double dy = region is { } roiY ? roiY.TopLeft.Y : 0;
+                foreach (var item in envelope.ResolvedTextInstances.Concat(envelope.UnresolvedMergedBoxes))
+                {
+                    var box = item.Bounds;
+                    Console.WriteLine($"[Bridge] {item.Text} ({box.Left + dx}, {box.Top + dy})-({box.Right + dx}, {box.Bottom + dy}) status={item.LocalizationStatus} corroboration={item.CorroborationCount}");
+                }
+            }
+
+            var matches = result.Lines.Where(line => string.Equals(line.Text, target, StringComparison.Ordinal)).ToArray();
+            if (matches.Length != 1 || result.Lines.Any(line =>
+                    line.Text != target && line.Text.Contains(target, StringComparison.Ordinal)))
+            {
+                Console.Error.WriteLine($"Expected one independent match for '{target}'. Exact matches: {matches.Length}.");
+                return 2;
+            }
+
+            var bounds = matches[0].Bounds;
+            Console.WriteLine($"{target}: ({bounds.TopLeft.X}, {bounds.TopLeft.Y})–({bounds.BottomRight.X}, {bounds.BottomRight.Y})");
+            bool withinExpectedRegion = bounds.TopLeft.X >= left && bounds.TopLeft.Y >= top &&
+                bounds.BottomRight.X <= right && bounds.BottomRight.Y <= bottom;
+            if (!withinExpectedRegion)
+                Console.Error.WriteLine($"Expected ROI: ({left}, {top})–({right}, {bottom})");
+            return withinExpectedRegion ? 0 : 2;
+        }
 
 #if DEVELOPING
 
@@ -480,6 +947,8 @@ logger.LogInformation(
             // --------------------------------------------------------
 
             services.AddOcrUtilityServices();
+            if (Environment.GetEnvironmentVariable("ISSUE59_PYTHON_OCR_ENABLED") == "1")
+                services.UseIssue59PythonOcr(ReadIssue59PythonOcrOptions());
 
             services.AddAndroidOcrServices();
 
@@ -898,10 +1367,99 @@ if (!isReadOnlySmokeTest)
                 return result;
             }
 
+            if (args.Contains("--issue61-export-review", StringComparer.Ordinal))
+            {
+                byte[] reviewImage = serviceProvider.GetRequiredService<IScreenshotService>().CaptureScreenshotBytes();
+                if (reviewImage.Length == 0) throw new InvalidOperationException("Review screenshot is empty.");
+                using var issue61Frame = OpenCvSharp.Cv2.ImDecode(reviewImage, OpenCvSharp.ImreadModes.Color);
+                if (issue61Frame.Empty()) throw new InvalidOperationException("Cannot decode the review screenshot.");
+                int issue61ReviewLeft = (int)Math.Floor(issue61Frame.Width * (1568.0 / 2340));
+                int issue61ReviewTop = (int)Math.Floor(issue61Frame.Height * (126.0 / 1080));
+                int issue61ReviewRight = (int)Math.Ceiling(issue61Frame.Width * (1710.0 / 2340));
+                int issue61ReviewBottom = (int)Math.Ceiling(issue61Frame.Height * (200.0 / 1080));
+                var issue61ReviewRegion = CoordinateUtilityServices.Rectangle.FromXYWH(issue61ReviewLeft, issue61ReviewTop, issue61ReviewRight - issue61ReviewLeft, issue61ReviewBottom - issue61ReviewTop);
+                string issue61DiagnosticDirectory = Path.Combine(screenshotsDirectory, "Issue61Diagnostics", Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(issue61DiagnosticDirectory);
+                await File.WriteAllBytesAsync(Path.Combine(issue61DiagnosticDirectory, "original.png"), reviewImage);
+                var issue61CropBounds = new OpenCvSharp.Rect(issue61ReviewLeft, issue61ReviewTop, issue61ReviewRight - issue61ReviewLeft, issue61ReviewBottom - issue61ReviewTop);
+                using var issue61Crop = new OpenCvSharp.Mat(issue61Frame, issue61CropBounds);
+                if (!OpenCvSharp.Cv2.ImWrite(Path.Combine(issue61DiagnosticDirectory, "roi.png"), issue61Crop)) throw new IOException("Could not save Issue #61 ROI.");
+                Console.WriteLine($"Issue #61 diagnostics: {issue61DiagnosticDirectory} | Image={issue61Frame.Width}x{issue61Frame.Height} | ROI={issue61CropBounds}");
+                var reviewOcr = await serviceProvider.GetRequiredService<IAndroidScreenOcrService>().RecognizeRegionAsync(reviewImage, issue61ReviewRegion, CancellationToken.None);
+                Console.WriteLine("Issue #61 regional OCR: " + string.Join(" | ", reviewOcr.Lines.Select(line => line.Text)));
+                var snapshot = serviceProvider.GetRequiredService<IOcrGroundedSnapshotFactory>()
+                    .Create(DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "_" + Guid.NewGuid().ToString("N"), reviewOcr);
+                var targets = snapshot.Targets.Where(target =>
+                    string.Equals(target.Text?.Trim(), "超值活動", StringComparison.Ordinal)).ToArray();
+                if (targets.Length != 1)
+                {
+                    throw new InvalidOperationException($"Review export requires a screen capture and exactly one 超值活動 target. Matches: {targets.Length}.");
+                }
+
+                string directory = Path.Combine(screenshotsDirectory, "Issue61Review", snapshot.SnapshotId);
+                Directory.CreateDirectory(directory);
+                await File.WriteAllBytesAsync(Path.Combine(directory, "original.png"), reviewImage);
+                await File.WriteAllTextAsync(Path.Combine(directory, "review-request.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { Snapshot = snapshot, TargetId = targets[0].Id },
+                        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                Console.WriteLine($"Issue #61 review evidence exported to {directory}");
+                if (args.Contains("--issue61-verify-destination", StringComparer.Ordinal))
+                {
+                    Console.WriteLine("請手動點擊「超值活動」一次，等頁面顯示後按 Enter。");
+                    if (Console.ReadLine() is null) return 2;
+                    byte[] destinationImage = serviceProvider.GetRequiredService<IScreenshotService>().CaptureScreenshotBytes();
+                    await File.WriteAllBytesAsync(Path.Combine(directory, "destination.png"), destinationImage);
+                    using var destinationFrame = OpenCvSharp.Cv2.ImDecode(destinationImage, OpenCvSharp.ImreadModes.Color);
+                    if (destinationFrame.Empty()) throw new InvalidOperationException("Destination screenshot could not be decoded.");
+                    int left = (int)Math.Floor(destinationFrame.Width * (64.0 / 2048));
+                    int top = (int)Math.Floor(destinationFrame.Height * (88.0 / 945));
+                    int right = (int)Math.Ceiling(destinationFrame.Width * (290.0 / 2048));
+                    int bottom = (int)Math.Ceiling(destinationFrame.Height * (193.0 / 945));
+                    var destinationRegion = CoordinateUtilityServices.Rectangle.FromXYWH(left, top, right - left, bottom - top);
+                    var destinationOcr = await serviceProvider.GetRequiredService<IAndroidScreenOcrService>().RecognizeRegionAsync(destinationImage, destinationRegion, CancellationToken.None);
+                    Console.WriteLine("Issue #61 destination OCR: " + string.Join(" | ", destinationOcr.Lines.Select(line => line.Text)));
+                    if (!destinationOcr.Lines.Any(line => string.Equals(line.Text?.Trim(), "每日首儲", StringComparison.Ordinal)))
+                    {
+                        Console.Error.WriteLine("Issue #61 FAIL: 每日首儲 was not verified. See destination.png in the export directory.");
+                        return 2;
+                    }
+                    Console.WriteLine("Issue #61 PASS: 每日首儲 verified after manual navigation.");
+                }
+                return 0;
+            }
+
             if (args.Contains("--issue59-smoke", StringComparer.Ordinal))
             {
                 logger.LogInformation(
                     "Starting Issue 59 red-dot real-device smoke test.");
+
+                if (args.Contains("--bottom-navigation", StringComparer.Ordinal))
+                {
+                    if (Environment.GetEnvironmentVariable("ISSUE59_PYTHON_OCR_ENABLED") != "1")
+                    {
+                        logger.LogError("Set ISSUE59_PYTHON_OCR_ENABLED=1 for Issue 59 bottom navigation.");
+                        return 2;
+                    }
+
+                    string? readinessPath = Environment.GetEnvironmentVariable("ISSUE59_SCREEN_READINESS_JSON");
+                    if (string.IsNullOrWhiteSpace(readinessPath))
+                    {
+                        logger.LogError("Set ISSUE59_SCREEN_READINESS_JSON to the readiness configuration file.");
+                        return 2;
+                    }
+
+                    var (readiness, referenceImage) = await LoadScreenReadinessAsync(readinessPath);
+                    using var reference = referenceImage;
+                    using var template = new OpenCvSharp.Mat(reference, readiness.TemplateRegion.ToPixels(reference));
+
+                    var screenshots = serviceProvider.GetRequiredService<IScreenshotService>();
+                    return await RunIssue59BottomCaptureAsync(
+                        () => screenshots.CaptureScreenshotBytes(),
+                        screenshot => VerifyIssue59BottomNavigationAsync(serviceProvider, screenshot),
+                        logger, screenshotsDirectory, TimeSpan.FromMilliseconds(readiness.PollMilliseconds),
+                        screenshot => readiness.Reject(screenshot, template),
+                        TimeSpan.FromSeconds(readiness.TimeoutSeconds));
+                }
 
                 Issue59RedDotSmokeTestRunner runner =
                     serviceProvider.GetRequiredService<Issue59RedDotSmokeTestRunner>();
