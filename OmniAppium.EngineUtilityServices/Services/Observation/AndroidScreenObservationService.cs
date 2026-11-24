@@ -32,6 +32,8 @@ public sealed class AndroidScreenObservationService
     private readonly IOcrObservationLineNormalizer? _normalizer;
     private readonly ScreenObservationStabilityOptions? _options;
 
+    public bool UseRegionalOcrForStability { get; init; }
+
     /// <summary>
     /// Initializes the legacy full-screen observation strategy.
     /// </summary>
@@ -219,11 +221,25 @@ public sealed class AndroidScreenObservationService
                         : 0;
                 }
 
-                // Keep the captured image and its OCR result paired.
-                OcrResult ocrResult =
-                    await _ocr.RecognizeAsync(
-                        image,
-                        cancellationToken).ConfigureAwait(false);
+                OcrResult ocrResult;
+                if (UseRegionalOcrForStability)
+                {
+                    using var frame = OpenCvSharp.Cv2.ImDecode(image, OpenCvSharp.ImreadModes.Unchanged);
+                    if (frame.Empty())
+                        throw new InvalidOperationException("Could not decode the stability screenshot.");
+
+                    var region = options.Region;
+                    int left = (int)Math.Floor(region.X * frame.Width);
+                    int top = (int)Math.Floor(region.Y * frame.Height);
+                    int right = Math.Min(frame.Width, (int)Math.Ceiling((region.X + region.Width) * frame.Width));
+                    int bottom = Math.Min(frame.Height, (int)Math.Ceiling((region.Y + region.Height) * frame.Height));
+                    var pixels = global::CoordinateUtilityServices.Rectangle.FromXYWH(left, top, right - left, bottom - top);
+                    ocrResult = await _ocr.RecognizeRegionAsync(image, pixels, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    ocrResult = await _ocr.RecognizeAsync(image, cancellationToken).ConfigureAwait(false);
+                }
 
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -270,9 +286,11 @@ public sealed class AndroidScreenObservationService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    return new AndroidScreenObservation(
-                        image,
-                        ocrResult);
+                    OcrResult observationOcr = UseRegionalOcrForStability
+                        ? await _ocr.RecognizeAsync(image, cancellationToken).ConfigureAwait(false)
+                        : ocrResult;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return new AndroidScreenObservation(image, observationOcr);
                 }
 
                 previousImage = image;
@@ -292,6 +310,31 @@ public sealed class AndroidScreenObservationService
 
                 await Task.Delay(delay, cancellationToken)
                     .ConfigureAwait(false);
+            }
+
+            if (UseRegionalOcrForStability && previousImage is not null)
+            {
+                try
+                {
+                    string directory = global::System.IO.Path.Combine(AppContext.BaseDirectory, "Screenshots", "Issue59-Timeout", $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}");
+                    global::System.IO.Directory.CreateDirectory(directory);
+                    using var frame = OpenCvSharp.Cv2.ImDecode(previousImage, OpenCvSharp.ImreadModes.Unchanged);
+                    if (frame.Empty() || !OpenCvSharp.Cv2.ImWrite(global::System.IO.Path.Combine(directory, "last-frame.png"), frame))
+                        throw new global::System.IO.IOException("Could not save the last sampled frame.");
+                    var region = options.Region;
+                    int left = (int)Math.Floor(region.X * frame.Width);
+                    int top = (int)Math.Floor(region.Y * frame.Height);
+                    int right = Math.Min(frame.Width, (int)Math.Ceiling((region.X + region.Width) * frame.Width));
+                    int bottom = Math.Min(frame.Height, (int)Math.Ceiling((region.Y + region.Height) * frame.Height));
+                    using var roi = new OpenCvSharp.Mat(frame, new OpenCvSharp.Rect(left, top, right - left, bottom - top));
+                    if (!OpenCvSharp.Cv2.ImWrite(global::System.IO.Path.Combine(directory, "last-roi.png"), roi))
+                        throw new global::System.IO.IOException("Could not save the last sampled ROI.");
+                    Console.Error.WriteLine($"[Issue59TimeoutFrame] {directory}");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[Issue59TimeoutFrame] Save failed: {ex.Message}");
+                }
             }
 
             throw new TimeoutException(
