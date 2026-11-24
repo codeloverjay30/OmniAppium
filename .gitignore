@@ -62,6 +62,9 @@ ideas/
 # file that contains file structure
 *-repomix-output.md
 
+# patch 
+*.patch
+
 # nuke Build tool
 .nuke/
 
