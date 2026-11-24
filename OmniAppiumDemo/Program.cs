@@ -1326,6 +1326,25 @@ if (!isReadOnlySmokeTest)
                 TrustedReviewerKey trustedKey = LoadPlannerTrustedReviewerKey(
                     plannerFileSystem, publicKeyPath, reviewerId, keyId, fingerprint);
 
+                // Issue #61 destination verification for the trusted planner.
+                string navigationTargetText = RequirePlannerEnvironment("PLANNER_NAVIGATION_TARGET_TEXT").Trim();
+                string destinationText = RequirePlannerEnvironment("PLANNER_NAVIGATION_DESTINATION_TEXT").Trim();
+                if (string.Equals(navigationTargetText, destinationText, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("Destination text must differ from the navigation target label.");
+                }
+
+                services.AddScoped<global::OmniAppium.EngineUtilityServices.Services.Navigation.ITrustedNavigationDestinationVerifier>(sp =>
+                    new global::OmniAppium.EngineUtilityServices.Services.Navigation.TrustedNavigationDestinationVerifier(
+                        sp.GetRequiredService<IAndroidScreenObservationService>(),
+                        sp.GetRequiredService<global::OmniAppium.EngineUtilityServices.Services.OCR.IOcrPageVerificationService>(),
+                        (snapshot, targetId) => snapshot.Targets.Any(target =>
+                            string.Equals(target.Id, targetId, StringComparison.Ordinal) &&
+                            string.Equals(target.Text.Trim(), navigationTargetText, StringComparison.Ordinal))
+                            ? new[] { destinationText }
+                            : Array.Empty<string>(),
+                        TimeSpan.FromSeconds(15)));
+
                 services.AddTrustedPlannerClick(
                     [trustedKey],
                     absoluteClaimDirectory,
