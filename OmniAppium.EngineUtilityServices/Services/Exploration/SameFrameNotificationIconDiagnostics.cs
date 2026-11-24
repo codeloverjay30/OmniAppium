@@ -73,7 +73,7 @@ public sealed class SameFrameNotificationIconDiagnostics
                 string reason = !valid ? "InvalidLabelBounds" :
                     !NotificationOcrLabelClassifier.IsPrimaryLabelCandidate(t.Text) ? "SecondaryOrInvalidLabel" :
                     dx > Math.Min(22, radius * 0.35) ? "LabelCenterMisaligned" :
-                    gap < -10 || gap > 36 ? "LabelVerticalGapRejected" :
+                    gap < -Math.Max(10.0, radius * 0.75) || gap > 36 ? "LabelVerticalGapRejected" :
                     r.Width > diameter * 1.8 ? "LabelTooWide" : "Aligned";
                 return (Target: t, Reason: reason, Distance: dx + Math.Abs(gap));
             }).OrderBy(x => x.Distance).ToArray();

@@ -58,7 +58,7 @@ public sealed class SameFrameNotificationIconDetector
                 double labelCenter = r.TopLeft.X + r.Width / 2;
                 double labelGap = r.TopLeft.Y - (y + diameter);
                 return Math.Abs(labelCenter - circle.Center.X) <= Math.Min(22, radius * 0.35) &&
-                       labelGap >= -10 && labelGap <= 36 &&
+                       labelGap >= -Math.Max(10.0, radius * 0.75) && labelGap <= 36 &&
                        r.Width <= diameter * 1.8;
             }).ToArray();
 

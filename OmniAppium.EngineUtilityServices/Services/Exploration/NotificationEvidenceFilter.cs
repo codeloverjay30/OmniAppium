@@ -39,29 +39,44 @@ public sealed class NotificationEvidenceFilter : INotificationEvidenceFilter
             .Select(region => region.ToRectangle(imageWidth, imageHeight))
             .ToArray();
 
+        bool trace = Environment.GetEnvironmentVariable("ISSUE59_BADGE_TRACE") == "1";
         var accepted = new List<RedDotEvidence>();
         double toleranceSquared = options.CenterTolerancePixels * options.CenterTolerancePixels;
         foreach (RedDotEvidence candidate in baseline)
         {
             if (!TryCenter(candidate, out double x, out double y))
-                continue;
-            if (x < 0 || y < 0 || x >= imageWidth || y >= imageHeight)
-                continue;
-            if (allowedRectangles.Length > 0 &&
-                !allowedRectangles.Any(region => region.Contains(new Point(x, y))))
-                continue;
-
-            bool stable = subsequentFrames.All(frame => frame.Any(other =>
             {
-                if (!TryCenter(other, out double ox, out double oy))
-                    return false;
-                double dx = ox - x;
-                double dy = oy - y;
-                return dx * dx + dy * dy <= toleranceSquared &&
-                    Math.Abs(other.Bounds.Width - candidate.Bounds.Width) <= options.SizeTolerancePixels &&
-                    Math.Abs(other.Bounds.Height - candidate.Bounds.Height) <= options.SizeTolerancePixels;
-            }));
-            if (stable)
+                if (trace) Console.Error.WriteLine("[Issue59BadgeTrace] rejected=InvalidBounds");
+                continue;
+            }
+
+            string? rejection = null;
+            if (x < 0 || y < 0 || x >= imageWidth || y >= imageHeight)
+                rejection = "OutsideImage";
+            else if (allowedRectangles.Length > 0 &&
+                !allowedRectangles.Any(region => region.Contains(new Point(x, y))))
+                rejection = "OutsideAllowedRegions";
+
+            for (int index = 0; rejection is null && index < subsequentFrames.Count; index++)
+            {
+                var frame = subsequentFrames[index];
+                bool matched = frame.Any(other =>
+                {
+                    if (!TryCenter(other, out double ox, out double oy))
+                        return false;
+                    double dx = ox - x;
+                    double dy = oy - y;
+                    return dx * dx + dy * dy <= toleranceSquared &&
+                        Math.Abs(other.Bounds.Width - candidate.Bounds.Width) <= options.SizeTolerancePixels &&
+                        Math.Abs(other.Bounds.Height - candidate.Bounds.Height) <= options.SizeTolerancePixels;
+                });
+                if (!matched)
+                    rejection = $"NoMatchInFollowUp{index + 1} (templateCandidates={frame.Count})";
+            }
+
+            if (trace)
+                Console.Error.WriteLine($"[Issue59BadgeTrace] center=({x:F1},{y:F1}) size=({candidate.Bounds.Width:F1},{candidate.Bounds.Height:F1}) result={rejection ?? "Accepted"}");
+            if (rejection is null)
                 accepted.Add(candidate);
         }
         return accepted.AsReadOnly();

@@ -202,6 +202,24 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
             gJob.Prompt,
             nameof(GeminiJob.Prompt));
 
+        GeminiToolMetadata[] registeredTools = _registry.GetAllTools().ToArray();
+
+        if (gJob.RequiresNavigationVerification &&
+            (_navigationEvidenceCollector is null || _navigationCompletionGuard is null))
+        {
+            throw new InvalidOperationException(
+                "Navigation verification requires a trusted evidence collector and completion guard.");
+        }
+
+        if (gJob.RequiresNavigationVerification &&
+            !registeredTools.Any(tool =>
+                tool.MethodInfo.DeclaringType == typeof(OcrGroundedPlannerClickTool) &&
+                tool.MethodInfo.Name == nameof(OcrGroundedPlannerClickTool.Click)))
+        {
+            throw new InvalidOperationException(
+                "Verified navigation requires the registered OCR-grounded planner click tool.");
+        }
+
         /*
          * Slice 5 boundary:
          * Acquire exactly one observation for this execution.
@@ -232,8 +250,7 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
          * declarations.
          */
         List<GeminiToolDeclaration> tools =
-            _registry
-                .GetAllTools()
+            registeredTools
                 .Select(metadata =>
                     _converter.ToToolDeclaration(metadata))
                 .ToList();
@@ -288,13 +305,6 @@ public sealed class GeminiJobHandler<TProgress> : IGeminiJobHandler
         {
             throw new InvalidOperationException(
                 "Gemini workflow reported an unsuccessful execution.");
-        }
-
-        if (gJob.RequiresNavigationVerification &&
-            (_navigationEvidenceCollector is null || _navigationCompletionGuard is null))
-        {
-            throw new InvalidOperationException(
-                "Navigation verification requires a trusted evidence collector and completion guard.");
         }
 
         if (_navigationCompletionGuard is not null)
