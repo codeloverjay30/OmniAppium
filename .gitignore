@@ -19,6 +19,12 @@ local-packages
 ### --- END OF COMMENT --- ###
 ### --------------------------------------------------------------------------------------------------------- ###
 
+# documentation files
+!*.md
+
+# readme files
+!README.md
+
 # temparory files
 [Tt]mp/
 [Tt]emp/
@@ -80,16 +86,11 @@ ideas/
 # documentation files
 docs/
 
-*.md
-
 # Attachments
 *.eml
 *.msg
 Attachments/
 Attachment/
-
-# readme files
-!README.md
 
 # secure configuration
 *.config.json5
